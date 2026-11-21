@@ -1,182 +1,341 @@
 -- ============================================================================
--- FINAL SCRIPT: BRONZE LAYER INITIALIZATION & CLEAN LOAD (XAMPP MYSQL)
+-- IMPORTANT WARNING:
+-- This script contains `DROP DATABASE IF EXISTS data_warehouse_ecommerce;`.
+-- If a database with the same name already exists in your MySQL/XAMPP instance,
+-- all tables, data, and objects inside it (including Silver/Gold layers if
+-- stored in the same database) will be PERMANENTLY DELETED and cannot be
+-- rolled back. Back up any existing data or rename the database before running.
 -- ============================================================================
 
--- 1. Siapkan & aktifkan database
-CREATE DATABASE IF NOT EXISTS data_warehouse
-CHARACTER SET utf8mb4
-COLLATE utf8mb4_unicode_ci;
-
-USE data_warehouse;
-
 -- ============================================================================
--- 2. RESET & BUAT ULANG 6 TABEL BRONZE (DDL)
+-- FINAL SCRIPT: BRONZE LAYER DDL & DATA LOAD (XAMPP MYSQL)
 -- ============================================================================
 
-DROP TABLE IF EXISTS bronze_crm_cust_info;
-CREATE TABLE bronze_crm_cust_info (
-    cst_id             INT,
-    cst_key            VARCHAR(50),
-    cst_firstname      VARCHAR(50),
-    cst_lastname       VARCHAR(50),
-    cst_marital_status VARCHAR(50),
-    cst_gndr           VARCHAR(50),
-    cst_create_date    DATE
+-- ----------------------------------------------------------------------------
+-- PART A: DDL (RESET & CREATE DATABASE + TABLES)
+-- ----------------------------------------------------------------------------
+DROP DATABASE IF EXISTS data_warehouse_ecommerce;
+CREATE DATABASE data_warehouse_ecommerce
+    CHARACTER SET utf8mb4
+    COLLATE utf8mb4_unicode_ci;
+
+USE data_warehouse_ecommerce;
+
+-- I. BRONZE PRODUCT CATALOG
+DROP TABLE IF EXISTS bronze_product_catalog;
+CREATE TABLE bronze_product_catalog (
+    product_id          VARCHAR(20),
+    product_name        VARCHAR(120),
+    product_category    VARCHAR(50),
+    product_subcategory VARCHAR(50),
+    brand               VARCHAR(50),
+    supplier            VARCHAR(50),
+    unit_price          DECIMAL(12, 2),
+    product_cost        DECIMAL(12, 2),
+    product_rating      DECIMAL(3, 1)
 );
 
-DROP TABLE IF EXISTS bronze_crm_prod_info;
-CREATE TABLE bronze_crm_prod_info (
-    prd_id       INT,
-    prd_key      VARCHAR(50),
-    prd_nm       VARCHAR(100),
-    prd_cost     INT,
-    prd_line     VARCHAR(50),
-    prd_start_dt DATE,
-    prd_end_dt   DATE
+-- II. BRONZE CUSTOMER MASTER
+DROP TABLE IF EXISTS bronze_customer_master;
+CREATE TABLE bronze_customer_master (
+    customer_id               VARCHAR(20),
+    customer_name             VARCHAR(100),
+    customer_age              INT,
+    gender                    VARCHAR(20),
+    customer_segment          VARCHAR(20),
+    customer_city             VARCHAR(50),
+    customer_state            VARCHAR(50),
+    customer_country          VARCHAR(30),
+    region                    VARCHAR(20),
+    customer_postal_code      VARCHAR(20),
+    customer_acquisition_cost DECIMAL(12, 2)
 );
 
-DROP TABLE IF EXISTS bronze_crm_sales_details;
-CREATE TABLE bronze_crm_sales_details (
-    sls_ord_num  VARCHAR(50),
-    sls_prd_key  VARCHAR(50),
-    sls_cust_id  INT,
-    sls_order_dt INT,
-    sls_ship_dt  INT,
-    sls_due_dt   INT,
-    sls_sales    INT,
-    sls_quantity INT,
-    sls_price    INT
+-- III. BRONZE SALES TRANSACTION
+DROP TABLE IF EXISTS bronze_sales_transaction;
+CREATE TABLE bronze_sales_transaction (
+    order_id                  VARCHAR(20),
+    order_date                DATE,
+    order_time                TIME,
+    order_status              VARCHAR(20),
+    sales_channel             VARCHAR(30),
+    customer_id               VARCHAR(20),
+    customer_name             VARCHAR(100),
+    customer_age              INT,
+    gender                    VARCHAR(20),
+    customer_segment          VARCHAR(20),
+    customer_type             VARCHAR(20),
+    customer_city             VARCHAR(50),
+    customer_state            VARCHAR(50),
+    customer_country          VARCHAR(30),
+    region                    VARCHAR(20),
+    customer_postal_code      VARCHAR(20),
+    payment_method            VARCHAR(30),
+    payment_status            VARCHAR(20),
+    currency                  VARCHAR(5),
+    shipping_method           VARCHAR(20),
+    warehouse                 VARCHAR(15),
+    delivery_days             DECIMAL(5, 1) NULL,
+    estimated_delivery_days   DECIMAL(5, 1) NULL,
+    delivery_status           VARCHAR(20),
+    return_status             VARCHAR(20) NULL,
+    return_reason             VARCHAR(50) NULL,
+    customer_rating           DECIMAL(3, 1) NULL,
+    review_sentiment          VARCHAR(20) NULL,
+    customer_review           VARCHAR(150) NULL,
+    marketing_channel         VARCHAR(30),
+    campaign_name             VARCHAR(50) NULL,
+    coupon_code               VARCHAR(20) NULL,
+    loyalty_points_earned     INT,
+    loyalty_points_redeemed   INT,
+    quantity                  INT,
+    gross_sales               DECIMAL(14, 2),
+    discount_amount           DECIMAL(14, 2),
+    tax_amount                DECIMAL(14, 2),
+    shipping_cost             DECIMAL(14, 2),
+    net_sales                 DECIMAL(14, 2),
+    product_cost              DECIMAL(14, 2),
+    profit                    DECIMAL(14, 2),
+    profit_margin_percentage  DECIMAL(6, 2),
+    customer_lifetime_value   DECIMAL(14, 2),
+    is_repeat_customer        TINYINT(1),
+    customer_order_count      INT
 );
 
-DROP TABLE IF EXISTS bronze_erp_cust_az12;
-CREATE TABLE bronze_erp_cust_az12 (
-    cid   VARCHAR(50),
-    bdate DATE,
-    gen   VARCHAR(50)
+-- IV. BRONZE ORDER ITEMS
+DROP TABLE IF EXISTS bronze_order_items;
+CREATE TABLE bronze_order_items (
+    order_id            VARCHAR(20),
+    product_id          VARCHAR(20),
+    quantity            INT,
+    unit_price          DECIMAL(12, 2),
+    discount_percentage DECIMAL(10, 6),
+    discount_amount     DECIMAL(12, 2),
+    gross_sales         DECIMAL(12, 2),
+    tax_amount          DECIMAL(12, 2),
+    shipping_cost       DECIMAL(12, 2),
+    net_sales           DECIMAL(12, 2),
+    product_cost        DECIMAL(12, 2),
+    profit              DECIMAL(12, 2)
 );
 
-DROP TABLE IF EXISTS bronze_erp_loc_a101;
-CREATE TABLE bronze_erp_loc_a101 (
-    cid   VARCHAR(50),
-    cntry VARCHAR(50)
-);
+-- ----------------------------------------------------------------------------
+-- PART B: DATA LOAD & VERIFICATION
+-- ----------------------------------------------------------------------------
 
-DROP TABLE IF EXISTS bronze_erp_px_cat_g1v2;
-CREATE TABLE bronze_erp_px_cat_g1v2 (
-    id          VARCHAR(50),
-    cat         VARCHAR(50),
-    subcat      VARCHAR(50),
-    maintenance VARCHAR(50)
-);
+-- I. LOAD DATA: customer_master.csv -> bronze_customer_master
+TRUNCATE TABLE bronze_customer_master;
 
--- ============================================================================
--- 3. IMPORT DATA CSV KE TABEL BRONZE (BULK LOAD + KONVERSI SEL KOSONG KE NULL)
--- ============================================================================
-
--- 3.1 CRM: cust_info.csv
-LOAD DATA INFILE 'C:/sql_data/sql-data-warehouse-project/datasets/source_crm/cust_info.csv'
-INTO TABLE bronze_crm_cust_info
+LOAD DATA INFILE 'C:/data_warehouse_ecommerce/datasets/customer_master.csv'
+INTO TABLE bronze_customer_master
 FIELDS TERMINATED BY ','
 OPTIONALLY ENCLOSED BY '"'
-LINES TERMINATED BY '\r\n'
-IGNORE 1 ROWS
-(@cst_id, @cst_key, @cst_firstname, @cst_lastname, @cst_marital_status, @cst_gndr, @cst_create_date)
+LINES TERMINATED BY '\n'
+IGNORE 1 ROWS (
+    @customer_id,
+    @customer_name,
+    @customer_age,
+    @gender,
+    @customer_segment,
+    @customer_city,
+    @customer_state,
+    @customer_country,
+    @region,
+    @customer_postal_code,
+    @customer_acquisition_cost
+)
 SET
-    cst_id             = NULLIF(@cst_id, ''),
-    cst_key            = NULLIF(@cst_key, ''),
-    cst_firstname      = NULLIF(@cst_firstname, ''),
-    cst_lastname       = NULLIF(@cst_lastname, ''),
-    cst_marital_status = NULLIF(@cst_marital_status, ''),
-    cst_gndr           = NULLIF(@cst_gndr, ''),
-    cst_create_date    = NULLIF(@cst_create_date, '');
+    customer_id               = NULLIF(@customer_id, ''),
+    customer_name             = NULLIF(@customer_name, ''),
+    customer_age              = NULLIF(@customer_age, ''),
+    gender                    = NULLIF(@gender, ''),
+    customer_segment          = NULLIF(@customer_segment, ''),
+    customer_city             = NULLIF(@customer_city, ''),
+    customer_state            = NULLIF(@customer_state, ''),
+    customer_country          = NULLIF(@customer_country, ''),
+    region                    = NULLIF(@region, ''),
+    customer_postal_code      = NULLIF(@customer_postal_code, ''),
+    customer_acquisition_cost = NULLIF(@customer_acquisition_cost, '');
 
--- 3.2 CRM: prod_info.csv
-LOAD DATA INFILE 'C:/sql_data/sql-data-warehouse-project/datasets/source_crm/prd_info.csv'
-INTO TABLE bronze_crm_prod_info
+-- II. LOAD DATA: product_catalog.csv -> bronze_product_catalog
+TRUNCATE TABLE bronze_product_catalog;
+
+LOAD DATA INFILE 'C:/data_warehouse_ecommerce/datasets/product_catalog.csv'
+INTO TABLE bronze_product_catalog
 FIELDS TERMINATED BY ','
 OPTIONALLY ENCLOSED BY '"'
-LINES TERMINATED BY '\r\n'
-IGNORE 1 ROWS
-(@prd_id, @prd_key, @prd_nm, @prd_cost, @prd_line, @prd_start_dt, @prd_end_dt)
+LINES TERMINATED BY '\n'
+IGNORE 1 ROWS (
+    @product_id,
+    @product_name,
+    @product_category,
+    @product_subcategory,
+    @brand,
+    @supplier,
+    @unit_price,
+    @product_cost,
+    @product_rating
+)
 SET
-    prd_id       = NULLIF(@prd_id, ''),
-    prd_key      = NULLIF(@prd_key, ''),
-    prd_nm       = NULLIF(@prd_nm, ''),
-    prd_cost     = NULLIF(@prd_cost, ''),
-    prd_line     = NULLIF(@prd_line, ''),
-    prd_start_dt = NULLIF(@prd_start_dt, ''),
-    prd_end_dt   = NULLIF(@prd_end_dt, '');
+    product_id          = NULLIF(@product_id, ''),
+    product_name        = NULLIF(@product_name, ''),
+    product_category    = NULLIF(@product_category, ''),
+    product_subcategory = NULLIF(@product_subcategory, ''),
+    brand               = NULLIF(@brand, ''),
+    supplier            = NULLIF(@supplier, ''),
+    unit_price          = NULLIF(@unit_price, ''),
+    product_cost        = NULLIF(@product_cost, ''),
+    product_rating      = NULLIF(@product_rating, '');
 
--- 3.3 CRM: sales_details.csv
-LOAD DATA INFILE 'C:/sql_data/sql-data-warehouse-project/datasets/source_crm/sales_details.csv'
-INTO TABLE bronze_crm_sales_details
+-- III. LOAD DATA: sales_transaction.csv -> bronze_sales_transaction
+TRUNCATE TABLE bronze_sales_transaction;
+
+LOAD DATA INFILE 'C:/data_warehouse_ecommerce/datasets/sales_transaction.csv'
+INTO TABLE bronze_sales_transaction
 FIELDS TERMINATED BY ','
 OPTIONALLY ENCLOSED BY '"'
-LINES TERMINATED BY '\r\n'
-IGNORE 1 ROWS
-(@sls_ord_num, @sls_prd_key, @sls_cust_id, @sls_order_dt, @sls_ship_dt, @sls_due_dt, @sls_sales, @sls_quantity, @sls_price)
+LINES TERMINATED BY '\n'
+IGNORE 1 ROWS (
+    @order_id,
+    @order_date,
+    @order_time,
+    @order_status,
+    @sales_channel,
+    @customer_id,
+    @customer_name,
+    @customer_age,
+    @gender,
+    @customer_segment,
+    @customer_type,
+    @customer_city,
+    @customer_state,
+    @customer_country,
+    @region,
+    @customer_postal_code,
+    @payment_method,
+    @payment_status,
+    @currency,
+    @shipping_method,
+    @warehouse,
+    @delivery_days,
+    @estimated_delivery_days,
+    @delivery_status,
+    @return_status,
+    @return_reason,
+    @customer_rating,
+    @review_sentiment,
+    @customer_review,
+    @marketing_channel,
+    @campaign_name,
+    @coupon_code,
+    @loyalty_points_earned,
+    @loyalty_points_redeemed,
+    @quantity,
+    @gross_sales,
+    @discount_amount,
+    @tax_amount,
+    @shipping_cost,
+    @net_sales,
+    @product_cost,
+    @profit,
+    @profit_margin_percentage,
+    @customer_lifetime_value,
+    @is_repeat_customer,
+    @customer_order_count
+)
 SET
-    sls_ord_num  = NULLIF(@sls_ord_num, ''),
-    sls_prd_key  = NULLIF(@sls_prd_key, ''),
-    sls_cust_id  = NULLIF(@sls_cust_id, ''),
-    sls_order_dt = NULLIF(@sls_order_dt, ''),
-    sls_ship_dt  = NULLIF(@sls_ship_dt, ''),
-    sls_due_dt   = NULLIF(@sls_due_dt, ''),
-    sls_sales    = NULLIF(@sls_sales, ''),
-    sls_quantity = NULLIF(@sls_quantity, ''),
-    sls_price    = NULLIF(@sls_price, '');
+    order_id                  = NULLIF(@order_id, ''),
+    order_date                = NULLIF(@order_date, ''),
+    order_time                = NULLIF(@order_time, ''),
+    order_status              = NULLIF(@order_status, ''),
+    sales_channel             = NULLIF(@sales_channel, ''),
+    customer_id               = NULLIF(@customer_id, ''),
+    customer_name             = NULLIF(@customer_name, ''),
+    customer_age              = NULLIF(@customer_age, ''),
+    gender                    = NULLIF(@gender, ''),
+    customer_segment          = NULLIF(@customer_segment, ''),
+    customer_type             = NULLIF(@customer_type, ''),
+    customer_city             = NULLIF(@customer_city, ''),
+    customer_state            = NULLIF(@customer_state, ''),
+    customer_country          = NULLIF(@customer_country, ''),
+    region                    = NULLIF(@region, ''),
+    customer_postal_code      = NULLIF(@customer_postal_code, ''),
+    payment_method            = NULLIF(@payment_method, ''),
+    payment_status            = NULLIF(@payment_status, ''),
+    currency                  = NULLIF(@currency, ''),
+    shipping_method           = NULLIF(@shipping_method, ''),
+    warehouse                 = NULLIF(@warehouse, ''),
+    delivery_days             = NULLIF(@delivery_days, ''),
+    estimated_delivery_days   = NULLIF(@estimated_delivery_days, ''),
+    delivery_status           = NULLIF(@delivery_status, ''),
+    return_status             = NULLIF(@return_status, ''),
+    return_reason             = NULLIF(@return_reason, ''),
+    customer_rating           = NULLIF(@customer_rating, ''),
+    review_sentiment          = NULLIF(@review_sentiment, ''),
+    customer_review           = NULLIF(@customer_review, ''),
+    marketing_channel         = NULLIF(@marketing_channel, ''),
+    campaign_name             = NULLIF(@campaign_name, ''),
+    coupon_code               = NULLIF(@coupon_code, ''),
+    loyalty_points_earned     = NULLIF(@loyalty_points_earned, ''),
+    loyalty_points_redeemed   = NULLIF(@loyalty_points_redeemed, ''),
+    quantity                  = NULLIF(@quantity, ''),
+    gross_sales               = NULLIF(@gross_sales, ''),
+    discount_amount           = NULLIF(@discount_amount, ''),
+    tax_amount                = NULLIF(@tax_amount, ''),
+    shipping_cost             = NULLIF(@shipping_cost, ''),
+    net_sales                 = NULLIF(@net_sales, ''),
+    product_cost              = NULLIF(@product_cost, ''),
+    profit                    = NULLIF(@profit, ''),
+    profit_margin_percentage  = NULLIF(@profit_margin_percentage, ''),
+    customer_lifetime_value   = NULLIF(@customer_lifetime_value, ''),
+    is_repeat_customer        = CASE
+                                    WHEN LOWER(TRIM(@is_repeat_customer)) IN ('1', 'true', 'yes') THEN 1
+                                    WHEN LOWER(TRIM(@is_repeat_customer)) IN ('0', 'false', 'no') THEN 0
+                                    ELSE NULL
+                                  END,
+    customer_order_count      = NULLIF(@customer_order_count, '');
 
--- 3.4 ERP: CUST_AZ12.csv
-LOAD DATA INFILE 'C:/sql_data/sql-data-warehouse-project/datasets/source_erp/CUST_AZ12.csv'
-INTO TABLE bronze_erp_cust_az12
+-- IV. LOAD DATA: order_items.csv -> bronze_order_items
+TRUNCATE TABLE bronze_order_items;
+
+LOAD DATA INFILE 'C:/data_warehouse_ecommerce/datasets/order_items.csv'
+INTO TABLE bronze_order_items
 FIELDS TERMINATED BY ','
 OPTIONALLY ENCLOSED BY '"'
-LINES TERMINATED BY '\r\n'
-IGNORE 1 ROWS
-(@cid, @bdate, @gen)
+LINES TERMINATED BY '\n'
+IGNORE 1 ROWS (
+    @order_id,
+    @product_id,
+    @quantity,
+    @unit_price,
+    @discount_percentage,
+    @discount_amount,
+    @gross_sales,
+    @tax_amount,
+    @shipping_cost,
+    @net_sales,
+    @product_cost,
+    @profit
+)
 SET
-    cid   = NULLIF(@cid, ''),
-    bdate = NULLIF(@bdate, ''),
-    gen   = NULLIF(@gen, '');
+    order_id            = NULLIF(@order_id, ''),
+    product_id          = NULLIF(@product_id, ''),
+    quantity            = NULLIF(@quantity, ''),
+    unit_price          = NULLIF(@unit_price, ''),
+    discount_percentage = NULLIF(@discount_percentage, ''),
+    discount_amount     = NULLIF(@discount_amount, ''),
+    gross_sales         = NULLIF(@gross_sales, ''),
+    tax_amount          = NULLIF(@tax_amount, ''),
+    shipping_cost       = NULLIF(@shipping_cost, ''),
+    net_sales           = NULLIF(@net_sales, ''),
+    product_cost        = NULLIF(@product_cost, ''),
+    profit              = NULLIF(@profit, '');
 
--- 3.5 ERP: LOC_A101.csv
-LOAD DATA INFILE 'C:/sql_data/sql-data-warehouse-project/datasets/source_erp/LOC_A101.csv'
-INTO TABLE bronze_erp_loc_a101
-FIELDS TERMINATED BY ','
-OPTIONALLY ENCLOSED BY '"'
-LINES TERMINATED BY '\r\n'
-IGNORE 1 ROWS
-(@cid, @cntry)
-SET
-    cid   = NULLIF(@cid, ''),
-    cntry = NULLIF(@cntry, '');
-
--- 3.6 ERP: PX_CAT_G1V2.csv
-LOAD DATA INFILE 'C:/sql_data/sql-data-warehouse-project/datasets/source_erp/PX_CAT_G1V2.csv'
-INTO TABLE bronze_erp_px_cat_g1v2
-FIELDS TERMINATED BY ','
-OPTIONALLY ENCLOSED BY '"'
-LINES TERMINATED BY '\r\n'
-IGNORE 1 ROWS
-(@id, @cat, @subcat, @maintenance)
-SET
-    id          = NULLIF(@id, ''),
-    cat         = NULLIF(@cat, ''),
-    subcat      = NULLIF(@subcat, ''),
-    maintenance = NULLIF(@maintenance, '');
-
--- ============================================================================
--- 4. VERIFIKASI JUMLAH BARIS AKHIR LAYER BRONZE
--- ============================================================================
-
-SELECT 'bronze_crm_cust_info' AS nama_tabel, COUNT(*) AS total_baris FROM bronze_crm_cust_info
+-- VERIFIKASI JUMLAH BARIS: BRONZE LAYER
+SELECT 'bronze_product_catalog'   AS nama_tabel, COUNT(*) AS total_baris FROM bronze_product_catalog
 UNION ALL
-SELECT 'bronze_crm_prod_info', COUNT(*) FROM bronze_crm_prod_info
+SELECT 'bronze_customer_master'   AS nama_tabel, COUNT(*) AS total_baris FROM bronze_customer_master
 UNION ALL
-SELECT 'bronze_crm_sales_details', COUNT(*) FROM bronze_crm_sales_details
+SELECT 'bronze_sales_transaction' AS nama_tabel, COUNT(*) AS total_baris FROM bronze_sales_transaction
 UNION ALL
-SELECT 'bronze_erp_cust_az12', COUNT(*) FROM bronze_erp_cust_az12
-UNION ALL
-SELECT 'bronze_erp_loc_a101', COUNT(*) FROM bronze_erp_loc_a101
-UNION ALL
-SELECT 'bronze_erp_px_cat_g1v2', COUNT(*) FROM bronze_erp_px_cat_g1v2;
+SELECT 'bronze_order_items'       AS nama_tabel, COUNT(*) AS total_baris FROM bronze_order_items;
