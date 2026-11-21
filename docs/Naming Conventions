@@ -1,0 +1,121 @@
+# Naming Conventions — E-Commerce Data Warehouse (MySQL / XAMPP)
+
+This document defines the naming standards for database objects across a **Medallion (`Bronze` → `Silver` → `Gold`)** data warehouse architecture adapted for **MySQL / MariaDB (XAMPP)** based on the four source datasets:
+- `product_catalog.csv`
+- `customer_master.csv`
+- `ecommerce_sales_customer_analytics_150k.csv`
+- `order_items.csv`
+
+---
+
+## Table of Contents
+
+1. [General Principles](#general-principles)
+2. [Layer Adaptation in MySQL (XAMPP)](#layer-adaptation-in-mysql-xampp)
+3. [Table Naming Conventions](#table-naming-conventions)
+   - [Bronze Rules](#bronze-rules)
+   - [Silver Rules](#silver-rules)
+   - [Gold Rules](#gold-rules)
+4. [Column Naming Conventions](#column-naming-conventions)
+   - [Surrogate Keys & Business Keys](#surrogate-keys--business-keys)
+   - [Technical Columns](#technical-columns)
+5. [Stored Procedure Naming Conventions](#stored-procedure-naming-conventions)
+6. [Dataset-to-Layer Mapping Matrix](#dataset-to-layer-mapping-matrix)
+
+---
+
+## General Principles
+
+- **Naming Format:** Use `snake_case` (all lowercase letters with words separated by underscores `_`).
+- **Language:** Use English for all database, table, column, index, and stored procedure names.
+- **Avoid Reserved Words:** Do not use SQL/MySQL reserved words on their own as object names (e.g., use `orders` instead of `order`, and avoid standalone words like `group`, `key`, or `status` without domain context).
+- **Singular / Plural Consistency:** Keep entity naming consistent across layers (e.g., `dim_product`, `dim_customer`, `fact_orders`, `fact_order_items`).
+
+---
+
+## Layer Adaptation in MySQL (XAMPP)
+
+Unlike SQL Server, which separates medallion layers using database schemas (`bronze.table_name`, `silver.table_name`, `gold.table_name`), **MySQL / MariaDB (XAMPP)** represents layers using **table name prefixes** within a single centralized database (e.g., `ecommerce_dwh`):
+
+- `bronze_<sourcesystem>_<entity>` → Raw ingested data as received from the source system.
+- `silver_<sourcesystem>_<entity>` → Cleansed and conformed data with standardized data types, `NULL` handling, and validation.
+- `gold_<category>_<entity>` → Business-ready analytical, dimensional, and reporting tables (`dim_`, `fact_`, `report_`).
+
+> **Note:** If stricter access isolation is required later, this prefix convention can still be mapped to separate databases (`dwh_bronze`, `dwh_silver`, `dwh_gold`).
+
+---
+
+## Table Naming Conventions
+
+### Bronze Rules
+
+- All table names must start with `bronze_<sourcesystem>_` followed by the entity name reflecting the source file/table without business transformations.
+- **Pattern:** `bronze_<sourcesystem>_<entity>`
+  - `bronze_`: Prefix indicating the Bronze layer.
+  - `<sourcesystem>`: Short identifier for the source system (e.g., `ecom` for e-commerce).
+  - `<entity>`: Source entity name in `snake_case`.
+- **Examples:**
+  - `bronze_ecom_product_catalog`
+  - `bronze_ecom_customer_master`
+  - `bronze_ecom_sales_customer_analytics`
+  - `bronze_ecom_order_items`
+
+### Silver Rules
+
+- All table names must start with `silver_<sourcesystem>_` followed by the entity name after data cleansing and type normalization.
+- **Pattern:** `silver_<sourcesystem>_<entity>`
+- **Examples:**
+  - `silver_ecom_product_catalog`
+  - `silver_ecom_customer_master`
+  - `silver_ecom_orders`
+  - `silver_ecom_order_items`
+
+### Gold Rules
+
+- All table names must use business-aligned names starting with an object category prefix.
+- **Pattern:** `gold_<category>_<entity>`
+  - `<category>`: Indicates the analytical role of the table (`dim`, `fact`, `report`).
+  - `<entity>`: Business entity or reporting subject in `snake_case`.
+
+#### Category Prefix Glossary (`Gold`)
+
+| Prefix | Meaning | Examples |
+| :--- | :--- | :--- |
+| `dim_` | Dimension table (descriptive attributes) | `gold_dim_product`, `gold_dim_customer` |
+| `fact_` | Fact table (transactional / measurable events) | `gold_fact_orders`, `gold_fact_order_items` |
+| `report_` | Summary or reporting-ready table | `gold_report_sales_monthly`, `gold_report_returns` |
+
+---
+
+## Column Naming Conventions
+
+### Surrogate Keys & Business Keys
+
+- **Surrogate Key:** Primary keys generated within dimension tables use the `_key` suffix.
+  - **Pattern:** `<entity>_key` (e.g., `product_key`, `customer_key`).
+- **Business / Natural Key:** Original source identifiers are preserved for lineage and traceability (e.g., `product_id`, `customer_id`, `order_id`).
+- **Foreign Key Constraint:** Use descriptive constraint names, such as `fk_<child_table>_<parent_table>` (e.g., `fk_fact_order_items_fact_orders`).
+
+### Technical Columns
+
+- All system-generated metadata/technical columns must start with the `dwh_` prefix.
+- **Pattern:** `dwh_<column_name>`
+- **Examples:**
+  - `dwh_load_date` (`DATETIME` / `TIMESTAMP`) — Timestamp when the record was loaded into the table.
+  - `dwh_source_file` (`VARCHAR`) — Source file name for auditability (optional).
+
+---
+
+## Stored Procedure Naming Conventions
+
+- All stored procedures used for loading data across layers must follow the pattern:
+  - **`load_<layer>`** (or `load_<layer>_<scope>` when split by domain or entity).
+- **Example Names:**
+  - `load_bronze`
+  - `load_silver`
+  - `load_gold`
+- **MySQL / MariaDB Syntax:**
+  ```sql
+  DELIMITER $$    CREATE PROCEDURE load_bronze() BEGIN -- Load data into the bronze layer END$$
+
+  DELIMITER ;
