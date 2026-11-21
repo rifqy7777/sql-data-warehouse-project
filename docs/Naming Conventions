@@ -3,7 +3,7 @@
 This document defines the naming standards for database objects across a **Medallion (`Bronze` → `Silver` → `Gold`)** data warehouse architecture adapted for **MySQL / MariaDB (XAMPP)** based on the four source datasets:
 - `product_catalog.csv`
 - `customer_master.csv`
-- `ecommerce_sales_customer_analytics_150k.csv`
+- `sales_transaction.csv`
 - `order_items.csv`
 
 ---
@@ -57,7 +57,7 @@ Unlike SQL Server, which separates medallion layers using database schemas (`bro
 - **Examples:**
   - `bronze_ecom_product_catalog`
   - `bronze_ecom_customer_master`
-  - `bronze_ecom_sales_customer_analytics`
+  - `bronze_ecom_sales_transaction_analytics`
   - `bronze_ecom_order_items`
 
 ### Silver Rules
@@ -67,7 +67,7 @@ Unlike SQL Server, which separates medallion layers using database schemas (`bro
 - **Examples:**
   - `silver_ecom_product_catalog`
   - `silver_ecom_customer_master`
-  - `silver_ecom_orders`
+  - `silver_ecom_sales_transaction`
   - `silver_ecom_order_items`
 
 ### Gold Rules
