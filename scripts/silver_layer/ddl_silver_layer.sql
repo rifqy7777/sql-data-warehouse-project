@@ -10,7 +10,8 @@ CREATE TABLE silver_product_catalog (
     supplier            VARCHAR(50),
     unit_price          DECIMAL(12, 2),
     product_cost        DECIMAL(12, 2),
-    product_rating      DECIMAL(3, 1)
+    product_rating      DECIMAL(3, 1),
+    data_load_dt        DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 -- II. SILVER CUSTOMER MASTER
