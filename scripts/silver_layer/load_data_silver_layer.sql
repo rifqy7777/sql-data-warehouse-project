@@ -1,31 +1,63 @@
 -- ============================================================================
--- TABEL 1: SILVER_CUSTOMER_MASTER 
+-- TABEL 1: SILVER_Product Catalog
 -- Tujuan: 
 --
 -- ============================================================================
 
-USE data_warehouse_ecommerce;
+INSERT INTO silver_product_catalog (
+    product_id,
+    product_name,
+    product_category,
+    product_subcategory,
+    brand,
+    supplier,
+    unit_price,
+    product_cost,
+    product_rating,
+    data_load_dt
+)
+WITH cleaned_product AS (
+    SELECT
+        TRIM(product_id) AS product_id,
+        TRIM(product_name) AS product_name,
+        TRIM(product_category) AS product_category,
+        TRIM(product_subcategory) AS product_subcategory,
+        TRIM(brand) AS brand,
+        TRIM(supplier) AS supplier,
+        ROUND(COALESCE(unit_price, 0), 2) AS unit_price,
+        ROUND(COALESCE(product_cost, 0), 2) AS product_cost,
+        ROUND(COALESCE(product_rating, 0), 1) AS product_rating,
+        ROW_NUMBER() OVER (
+            PARTITION BY TRIM(product_id)
+            ORDER BY product_id
+        ) AS rn
+    FROM bronze_product_catalog
+    WHERE product_id IS NOT NULL
+      AND TRIM(product_id) <> ''
+)
+SELECT
+    product_id,
+    product_name,
+    product_category,
+    product_subcategory,
+    brand,
+    supplier,
+    unit_price,
+    product_cost,
+    product_rating,
+    CURRENT_TIMESTAMP AS data_load_dt
+FROM cleaned_product
+WHERE rn = 1;
+
+SELECT *
+FROM silver_product_catalog;
 
 -- ============================================================================
--- LOAD & CLEAN: SILVER_CUSTOMER_MASTER 
+-- TABEL 2: SILVER_CUSTOMER_MASTER
+-- Tujuan: 
+--
 -- ============================================================================
-WITH cleaned_customer AS (
-    SELECT
-        TRIM(customer_id) AS customer_id,
-        TRIM(customer_name) AS customer_name,
-        customer_age,
-        TRIM(gender) AS gender,
-        TRIM(customer_segment) AS customer_segment,
-        TRIM(customer_city) AS customer_city,
-        TRIM(customer_state) AS customer_state,
-        TRIM(customer_country) AS customer_country,
-        TRIM(region) AS region,
-        TRIM(CAST(customer_postal_code AS CHAR)) AS customer_postal_code,
-        ROUND(COALESCE(customer_acquisition_cost, 0), 2) AS customer_acquisition_cost
-    FROM bronze_customer_master
-    WHERE customer_id IS NOT NULL
-      AND TRIM(customer_id) <> ''
-)
+
 INSERT INTO silver_customer_master (
     customer_id,
     customer_name,
@@ -37,7 +69,29 @@ INSERT INTO silver_customer_master (
     customer_country,
     region,
     customer_postal_code,
-    customer_acquisition_cost
+    customer_acquisition_cost,
+    data_load_dt
+)
+WITH cleaned_customer AS (
+    SELECT 
+        TRIM(customer_id) AS customer_id,
+        TRIM(customer_name) AS customer_name,
+        customer_age,
+        TRIM(gender) AS gender,
+        TRIM(customer_segment) AS customer_segment,
+        TRIM(customer_city) AS customer_city,
+        TRIM(customer_state) AS customer_state,
+        TRIM(customer_country) AS customer_country,
+        TRIM(region) AS region,
+        TRIM(customer_postal_code) AS customer_postal_code,
+        customer_acquisition_cost,
+        ROW_NUMBER() OVER (
+            PARTITION BY TRIM(customer_id)
+            ORDER BY customer_id
+        ) AS rn
+    FROM bronze_customer_master
+    WHERE customer_id IS NOT NULL
+      AND TRIM(customer_id) <> ''
 )
 SELECT
     customer_id,
@@ -50,5 +104,238 @@ SELECT
     customer_country,
     region,
     customer_postal_code,
-    customer_acquisition_cost
-FROM cleaned_customer;
+    customer_acquisition_cost,
+    CURRENT_TIMESTAMP AS data_load_dt
+FROM cleaned_customer
+WHERE rn = 1;
+
+-- 3. Verifikasi hasil load
+SELECT *
+FROM silver_customer_master;
+
+-- ============================================================================
+-- TABEL 3: SILVER_SALES_TRANSACTION
+-- Tujuan: 
+--
+-- ============================================================================
+
+INSERT INTO silver_sales_transaction (
+    order_id,
+    order_date,
+    order_time,
+    order_status,
+    sales_channel,
+    customer_id,
+    customer_name,
+    customer_age,
+    gender,
+    customer_segment,
+    customer_type,
+    customer_city,
+    customer_state,
+    customer_country,
+    region,
+    customer_postal_code,
+    payment_method,
+    payment_status,
+    currency,
+    shipping_method,
+    warehouse,
+    delivery_days,
+    estimated_delivery_days,
+    delivery_status,
+    return_status,
+    return_reason,
+    customer_rating,
+    review_sentiment,
+    customer_review,
+    marketing_channel,
+    campaign_name,
+    coupon_code,
+    loyalty_points_earned,
+    loyalty_points_redeemed,
+    quantity,
+    gross_sales,
+    discount_amount,
+    tax_amount,
+    shipping_cost,
+    net_sales,
+    product_cost,
+    profit,
+    profit_margin_percentage,
+    customer_lifetime_value,
+    is_repeat_customer,
+    customer_order_count,
+    data_load_dt
+)
+WITH cleaned_transaction AS (
+    SELECT
+        TRIM(order_id) AS order_id,
+        order_date,
+        order_time,
+        TRIM(order_status) AS order_status,
+        TRIM(sales_channel) AS sales_channel,
+        TRIM(customer_id) AS customer_id,
+        TRIM(customer_name) AS customer_name,
+        customer_age,
+        TRIM(gender) AS gender,
+        TRIM(customer_segment) AS customer_segment,
+        TRIM(customer_type) AS customer_type,
+        TRIM(customer_city) AS customer_city,
+        TRIM(customer_state) AS customer_state,
+        TRIM(customer_country) AS customer_country,
+        TRIM(region) AS region,
+        TRIM(customer_postal_code) AS customer_postal_code,
+        TRIM(payment_method) AS payment_method,
+        TRIM(payment_status) AS payment_status,
+        UPPER(TRIM(currency)) AS currency,
+        TRIM(shipping_method) AS shipping_method,
+        TRIM(warehouse) AS warehouse,
+        delivery_days,
+        estimated_delivery_days,
+        TRIM(delivery_status) AS delivery_status,
+        NULLIF(TRIM(return_status), '') AS return_status,
+        NULLIF(TRIM(return_reason), '') AS return_reason,
+        ROUND(customer_rating, 1) AS customer_rating,
+        NULLIF(TRIM(review_sentiment), '') AS review_sentiment,
+        NULLIF(TRIM(customer_review), '') AS customer_review,
+        TRIM(marketing_channel) AS marketing_channel,
+        NULLIF(TRIM(campaign_name), '') AS campaign_name,
+        NULLIF(TRIM(coupon_code), '') AS coupon_code,
+        CAST(COALESCE(loyalty_points_earned, 0) AS SIGNED) AS loyalty_points_earned,
+        CAST(COALESCE(loyalty_points_redeemed, 0) AS SIGNED) AS loyalty_points_redeemed,
+        CAST(COALESCE(quantity, 0) AS SIGNED) AS quantity,
+        ROUND(COALESCE(gross_sales, 0), 2) AS gross_sales,
+        ROUND(COALESCE(discount_amount, 0), 2) AS discount_amount,
+        ROUND(COALESCE(tax_amount, 0), 2) AS tax_amount,
+        ROUND(COALESCE(shipping_cost, 0), 2) AS shipping_cost,
+        ROUND(COALESCE(net_sales, 0), 2) AS net_sales,
+        ROUND(COALESCE(product_cost, 0), 2) AS product_cost,
+        ROUND(COALESCE(profit, 0), 2) AS profit,
+        ROUND(COALESCE(profit_margin_percentage, 0), 2) AS profit_margin_percentage,
+        ROUND(COALESCE(customer_lifetime_value, 0), 2) AS customer_lifetime_value,
+        CASE
+            WHEN UPPER(TRIM(CAST(is_repeat_customer AS CHAR))) IN ('1', 'TRUE', 'YES') THEN 1
+            ELSE 0
+        END AS is_repeat_customer,
+        CAST(COALESCE(customer_order_count, 0) AS SIGNED) AS customer_order_count
+    FROM bronze_sales_transaction
+    WHERE order_id IS NOT NULL
+      AND TRIM(order_id) <> ''
+)
+SELECT
+    order_id,
+    order_date,
+    order_time,
+    order_status,
+    sales_channel,
+    customer_id,
+    customer_name,
+    customer_age,
+    gender,
+    customer_segment,
+    customer_type,
+    customer_city,
+    customer_state,
+    customer_country,
+    region,
+    customer_postal_code,
+    payment_method,
+    payment_status,
+    currency,
+    shipping_method,
+    warehouse,
+    delivery_days,
+    estimated_delivery_days,
+    delivery_status,
+    return_status,
+    return_reason,
+    customer_rating,
+    review_sentiment,
+    customer_review,
+    marketing_channel,
+    campaign_name,
+    coupon_code,
+    loyalty_points_earned,
+    loyalty_points_redeemed,
+    quantity,
+    gross_sales,
+    discount_amount,
+    tax_amount,
+    shipping_cost,
+    net_sales,
+    product_cost,
+    profit,
+    profit_margin_percentage,
+    customer_lifetime_value,
+    is_repeat_customer,
+    customer_order_count,
+    CURRENT_TIMESTAMP AS data_load_dt
+FROM cleaned_transaction;
+
+-- ============================================================================
+-- TABEL 4: SILVER_ORDERS_ITEMS
+-- Tujuan: 
+--
+-- ============================================================================
+INSERT INTO silver_order_items (
+    order_id,
+    product_id,
+    quantity,
+    unit_price,
+    discount_percentage,
+    discount_amount,
+    gross_sales,
+    tax_amount,
+    shipping_cost,
+    net_sales,
+    product_cost,
+    profit,
+    data_load_dt
+)
+WITH cleaned_orders AS (
+    SELECT
+        TRIM(order_id) AS order_id,
+        TRIM(product_id) AS product_id,
+        CAST(COALESCE(quantity, 0) AS SIGNED) AS quantity,
+        ROUND(COALESCE(unit_price, 0), 2) AS unit_price,
+        ROUND(COALESCE(discount_percentage, 0), 6) AS discount_percentage,
+        ROUND(COALESCE(discount_amount, 0), 2) AS discount_amount,
+        ROUND(COALESCE(gross_sales, 0), 2) AS gross_sales,
+        ROUND(COALESCE(tax_amount, 0), 2) AS tax_amount,
+        ROUND(COALESCE(shipping_cost, 0), 2) AS shipping_cost,
+        ROUND(COALESCE(net_sales, 0), 2) AS net_sales,
+        ROUND(COALESCE(product_cost, 0), 2) AS product_cost,
+        ROUND(COALESCE(profit, 0), 2) AS profit
+    FROM bronze_order_items
+    WHERE order_id IS NOT NULL
+      AND TRIM(order_id) <> ''
+      AND product_id IS NOT NULL
+      AND TRIM(product_id) <> ''
+)
+SELECT
+    order_id,
+    product_id,
+    quantity,
+    unit_price,
+    discount_percentage,
+    discount_amount,
+    gross_sales,
+    tax_amount,
+    shipping_cost,
+    net_sales,
+    product_cost,
+    profit,
+    CURRENT_TIMESTAMP AS data_load_dt
+FROM cleaned_orders;
+
+-- ============================================================================
+-- VERIFIKASI HASIL LOAD
+-- ============================================================================
+SELECT 'silver_product_catalog' AS table_name, COUNT(*) AS total_rows FROM silver_product_catalog
+UNION ALL
+SELECT 'silver_customer_master', COUNT(*) FROM silver_customer_master
+UNION ALL
+SELECT 'silver_sales_transaction', COUNT(*) FROM silver_sales_transaction
+UNION ALL
+SELECT 'silver_order_items', COUNT(*) FROM silver_order_items;
