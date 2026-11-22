@@ -241,3 +241,72 @@ SELECT
     SUM(CASE WHEN product_cost > unit_price THEN 1 ELSE 0 END) AS cost_higher_than_price,
     SUM(CASE WHEN product_rating IS NULL OR product_rating < 0 OR product_rating > 5 THEN 1 ELSE 0 END) AS invalid_rating
 FROM bronze_product_catalog;
+
+
+USE data_warehouse_ecommerce;
+
+-- ============================================================================
+-- TABEL 3: BRONZE_ORDER_ITEMS (DATA QUALITY CHECK)
+-- Tujuan: Mengecek kelengkapan order_id & product_id, mendeteksi pasangan
+--         (order_id, product_id) yang muncul lebih dari sekali, serta memeriksa
+--         anomali/rentang nilai numerik sebelum masuk ke tahap Silver.
+-- ============================================================================
+
+
+-- ----------------------------------------------------------------------------
+-- I. CEK KUNCI UTAMA (order_id & product_id) — NULL, KOSONG, DAN SPASI
+-- Memastikan tidak ada ID yang NULL, string kosong, atau punya spasi berlebih.
+-- ----------------------------------------------------------------------------
+SELECT
+    order_id,
+    product_id,
+    CASE
+        WHEN order_id IS NULL OR product_id IS NULL THEN 'NULL Key'
+        WHEN TRIM(order_id) = '' OR TRIM(product_id) = '' THEN 'Empty Key'
+        WHEN order_id <> TRIM(order_id) OR product_id <> TRIM(product_id) THEN 'Leading/Trailing Space'
+        ELSE 'Clean'
+    END AS status_cek
+FROM bronze_order_items
+WHERE order_id IS NULL
+   OR product_id IS NULL
+   OR TRIM(order_id) = ''
+   OR TRIM(product_id) = ''
+   OR order_id <> TRIM(order_id)
+   OR product_id <> TRIM(product_id);
+
+
+-- ----------------------------------------------------------------------------
+-- II. CEK PASANGAN (order_id, product_id) YANG GANDA
+-- Catatan: 1 order_id punya banyak baris itu normal (multi-item order),
+-- tapi kalau (order_id, product_id) sama muncul > 1 kali, perlu dicek detailnya.
+-- ----------------------------------------------------------------------------
+SELECT
+    order_id,
+    product_id,
+    COUNT(*) AS total_rows
+FROM bronze_order_items
+GROUP BY order_id, product_id
+HAVING COUNT(*) > 1
+ORDER BY total_rows DESC, order_id, product_id;
+
+
+-- ----------------------------------------------------------------------------
+-- III. CEK KOLOM NUMERIK (quantity, harga, diskon, pajak, ongkir, sales, profit)
+-- Melihat rentang min/max, NULL, quantity/harga tidak wajar, dan baris rugi.
+-- ----------------------------------------------------------------------------
+SELECT
+    MIN(quantity) AS min_qty,
+    MAX(quantity) AS max_qty,
+    MIN(unit_price) AS min_unit_price,
+    MAX(unit_price) AS max_unit_price,
+    MIN(gross_sales) AS min_gross_sales,
+    MAX(gross_sales) AS max_gross_sales,
+    MIN(net_sales) AS min_net_sales,
+    MAX(net_sales) AS max_net_sales,
+    MIN(profit) AS min_profit,
+    MAX(profit) AS max_profit,
+    SUM(CASE WHEN quantity IS NULL OR quantity <= 0 THEN 1 ELSE 0 END) AS invalid_qty,
+    SUM(CASE WHEN unit_price IS NULL OR unit_price <= 0 THEN 1 ELSE 0 END) AS invalid_unit_price,
+    SUM(CASE WHEN gross_sales IS NULL OR gross_sales < 0 THEN 1 ELSE 0 END) AS negative_gross_sales,
+    SUM(CASE WHEN profit < 0 THEN 1 ELSE 0 END) AS negative_profit_rows
+FROM bronze_order_items;
