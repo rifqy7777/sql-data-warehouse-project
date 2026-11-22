@@ -1,6 +1,10 @@
+USE data_warehouse_ecommerce;
 
--- I. SILVER PRODUCT CATALOG
+-- ============================================================================
+-- 1. SILVER PRODUCT CATALOG (DDL)
+-- ============================================================================
 DROP TABLE IF EXISTS silver_product_catalog;
+
 CREATE TABLE silver_product_catalog (
     product_id          VARCHAR(20),
     product_name        VARCHAR(120),
@@ -14,8 +18,11 @@ CREATE TABLE silver_product_catalog (
     data_load_dt        DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- II. SILVER CUSTOMER MASTER
+-- ============================================================================
+-- 2. SILVER CUSTOMER MASTER (DDL)
+-- ============================================================================
 DROP TABLE IF EXISTS silver_customer_master;
+
 CREATE TABLE silver_customer_master (
     customer_id               VARCHAR(20),
     customer_name             VARCHAR(100),
@@ -27,17 +34,16 @@ CREATE TABLE silver_customer_master (
     customer_country          VARCHAR(30),
     region                    VARCHAR(20),
     customer_postal_code      VARCHAR(20),
-    customer_acquisition_cost DECIMAL(12, 2)
+    customer_acquisition_cost DECIMAL(12, 2),
+    data_load_dt              DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ============================================================================
--- III. SILVER SALES TRANSACTION
+-- 3. SILVER SALES TRANSACTION (DDL)
 -- ============================================================================
-
 DROP TABLE IF EXISTS silver_sales_transaction;
 
 CREATE TABLE silver_sales_transaction (
-
     -- 1. Order & Waktu
     order_id                  VARCHAR(20),
     order_date                DATE,
@@ -82,25 +88,27 @@ CREATE TABLE silver_sales_transaction (
 
     -- 5. Measures Keuangan & Retensi
     quantity                  INT,
-    gross_sales               DECIMAL(14, 2),
-    discount_amount           DECIMAL(14, 2),
-    tax_amount                DECIMAL(14, 2),
-    shipping_cost             DECIMAL(14, 2),
-    net_sales                 DECIMAL(14, 2),
-    product_cost              DECIMAL(14, 2),
-    profit                    DECIMAL(14, 2),
+    gross_sales               DECIMAL(12, 2),
+    discount_amount           DECIMAL(12, 2),
+    tax_amount                DECIMAL(12, 2),
+    shipping_cost             DECIMAL(12, 2),
+    net_sales                 DECIMAL(12, 2),
+    product_cost              DECIMAL(12, 2),
+    profit                    DECIMAL(12, 2),
     profit_margin_percentage  DECIMAL(6, 2),
-    customer_lifetime_value   DECIMAL(14, 2),
+    customer_lifetime_value   DECIMAL(12, 2),
     is_repeat_customer        TINYINT(1),
     customer_order_count      INT,
 
     -- 6. Metadata
     data_load_dt              DATETIME DEFAULT CURRENT_TIMESTAMP
-
 );
 
--- IV. SIlVER ORDER ITEMS
+-- ============================================================================
+-- 4. SILVER ORDER ITEMS (DDL)
+-- ============================================================================
 DROP TABLE IF EXISTS silver_order_items;
+
 CREATE TABLE silver_order_items (
     order_id            VARCHAR(20),
     product_id          VARCHAR(20),
@@ -113,5 +121,6 @@ CREATE TABLE silver_order_items (
     shipping_cost       DECIMAL(12, 2),
     net_sales           DECIMAL(12, 2),
     product_cost        DECIMAL(12, 2),
-    profit              DECIMAL(12, 2)
+    profit              DECIMAL(12, 2),
+    data_load_dt        DATETIME DEFAULT CURRENT_TIMESTAMP
 );
