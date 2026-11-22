@@ -310,3 +310,96 @@ SELECT
     SUM(CASE WHEN gross_sales IS NULL OR gross_sales < 0 THEN 1 ELSE 0 END) AS negative_gross_sales,
     SUM(CASE WHEN profit < 0 THEN 1 ELSE 0 END) AS negative_profit_rows
 FROM bronze_order_items;
+
+USE data_warehouse_ecommerce;
+
+-- ============================================================================
+-- TABEL 4: BRONZE_SALES_TRANSACTION (DATA QUALITY CHECK)
+-- Tujuan: Mengecek keunikan order_id, format tanggal/waktu, status &
+--         pengiriman, kolom kosong/retur/kupon, serta kewajaran angka transaksi
+--         sebelum masuk ke tahap Silver.
+-- ============================================================================
+
+
+-- ----------------------------------------------------------------------------
+-- 1. CEK PRIMARY KEY (order_id)
+-- Memastikan setiap order_id unik (1 baris per order) dan tidak NULL/kosong.
+-- ----------------------------------------------------------------------------
+SELECT
+    order_id,
+    COUNT(*) AS total_rows
+FROM bronze_sales_transaction
+GROUP BY order_id
+HAVING order_id IS NULL
+    OR TRIM(order_id) = ''
+    OR COUNT(*) > 1;
+
+
+-- ----------------------------------------------------------------------------
+-- 2. CEK TANGGAL, WAKTU, & STATUS TRANSAKSI / PEMBAYARAN / MATA UANG
+-- Memastikan order_date & order_time bisa diparse dengan benar serta mengecek
+-- nilai unik pada status dan currency.
+-- ----------------------------------------------------------------------------
+SELECT
+    SUM(CASE WHEN order_date IS NULL OR TRIM(CAST(order_date AS CHAR)) = '' THEN 1 ELSE 0 END) AS null_or_empty_order_date,
+    SUM(CASE WHEN order_time IS NULL OR TRIM(CAST(order_time AS CHAR)) = '' THEN 1 ELSE 0 END) AS null_or_empty_order_time
+FROM bronze_sales_transaction;
+
+SELECT DISTINCT order_status, TRIM(order_status) AS trimmed_val
+FROM bronze_sales_transaction
+ORDER BY order_status;
+
+SELECT DISTINCT payment_status, TRIM(payment_status) AS trimmed_val
+FROM bronze_sales_transaction
+ORDER BY payment_status;
+
+SELECT DISTINCT currency, TRIM(currency) AS trimmed_val
+FROM bronze_sales_transaction
+ORDER BY currency;
+
+
+-- ----------------------------------------------------------------------------
+-- 3. CEK KOLOM KONTEKSTUAL YANG SERING KOSONG (return_status, return_reason, coupon_code)
+-- Mengecek distribusi nilai termasuk NULL atau string kosong (wajar jika tidak
+-- ada retur atau tidak pakai kupon).
+-- ----------------------------------------------------------------------------
+SELECT
+    return_status,
+    COUNT(*) AS total_rows
+FROM bronze_sales_transaction
+GROUP BY return_status
+ORDER BY total_rows DESC;
+
+SELECT
+    return_reason,
+    COUNT(*) AS total_rows
+FROM bronze_sales_transaction
+GROUP BY return_reason
+ORDER BY total_rows DESC;
+
+SELECT
+    coupon_code,
+    COUNT(*) AS total_rows
+FROM bronze_sales_transaction
+GROUP BY coupon_code
+ORDER BY total_rows DESC;
+
+
+-- ----------------------------------------------------------------------------
+-- 4. CEK KOLOM NUMERIK UTAMA (quantity, gross_sales, net_sales, profit, margin)
+-- Melihat rentang min/max, NULL, dan baris dengan profit/margin negatif.
+-- ----------------------------------------------------------------------------
+SELECT
+    MIN(quantity) AS min_qty,
+    MAX(quantity) AS max_qty,
+    MIN(gross_sales) AS min_gross_sales,
+    MAX(gross_sales) AS max_gross_sales,
+    MIN(net_sales) AS min_net_sales,
+    MAX(net_sales) AS max_net_sales,
+    MIN(profit) AS min_profit,
+    MAX(profit) AS max_profit,
+    MIN(profit_margin_percentage) AS min_margin_pct,
+    MAX(profit_margin_percentage) AS max_margin_pct,
+    SUM(CASE WHEN quantity IS NULL OR quantity <= 0 THEN 1 ELSE 0 END) AS invalid_qty,
+    SUM(CASE WHEN profit < 0 THEN 1 ELSE 0 END) AS negative_profit_rows
+FROM bronze_sales_transaction;
