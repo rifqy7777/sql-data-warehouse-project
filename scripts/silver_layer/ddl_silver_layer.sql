@@ -29,14 +29,22 @@ CREATE TABLE silver_customer_master (
     customer_acquisition_cost DECIMAL(12, 2)
 );
 
--- III. BRONZE SALES TRANSACTION
+-- ============================================================================
+-- III. SILVER SALES TRANSACTION
+-- ============================================================================
+
 DROP TABLE IF EXISTS silver_sales_transaction;
+
 CREATE TABLE silver_sales_transaction (
+
+    -- 1. Order & Waktu
     order_id                  VARCHAR(20),
     order_date                DATE,
     order_time                TIME,
     order_status              VARCHAR(20),
     sales_channel             VARCHAR(30),
+
+    -- 2. Customer & Lokasi
     customer_id               VARCHAR(20),
     customer_name             VARCHAR(100),
     customer_age              INT,
@@ -48,14 +56,18 @@ CREATE TABLE silver_sales_transaction (
     customer_country          VARCHAR(30),
     region                    VARCHAR(20),
     customer_postal_code      VARCHAR(20),
+
+    -- 3. Pembayaran & Pengiriman
     payment_method            VARCHAR(30),
     payment_status            VARCHAR(20),
     currency                  VARCHAR(5),
     shipping_method           VARCHAR(20),
     warehouse                 VARCHAR(15),
-    delivery_days             DECIMAL(5, 1) NULL,
-    estimated_delivery_days   DECIMAL(5, 1) NULL,
+    delivery_days             INT NULL,
+    estimated_delivery_days   INT NULL,
     delivery_status           VARCHAR(20),
+
+    -- 4. Retur, Review, Marketing & Loyalty
     return_status             VARCHAR(20) NULL,
     return_reason             VARCHAR(50) NULL,
     customer_rating           DECIMAL(3, 1) NULL,
@@ -66,6 +78,8 @@ CREATE TABLE silver_sales_transaction (
     coupon_code               VARCHAR(20) NULL,
     loyalty_points_earned     INT,
     loyalty_points_redeemed   INT,
+
+    -- 5. Measures Keuangan & Retensi
     quantity                  INT,
     gross_sales               DECIMAL(14, 2),
     discount_amount           DECIMAL(14, 2),
@@ -77,7 +91,11 @@ CREATE TABLE silver_sales_transaction (
     profit_margin_percentage  DECIMAL(6, 2),
     customer_lifetime_value   DECIMAL(14, 2),
     is_repeat_customer        TINYINT(1),
-    customer_order_count      INT
+    customer_order_count      INT,
+
+    -- 6. Metadata
+    data_load_dt              DATETIME DEFAULT CURRENT_TIMESTAMP
+
 );
 
 -- IV. SIlVER ORDER ITEMS
