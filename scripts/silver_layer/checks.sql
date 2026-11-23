@@ -524,21 +524,77 @@ GROUP BY customer_postal_code
 HAVING COUNT(DISTINCT customer_id) > 1
 ORDER BY total_customer DESC, customer_postal_code;
 
+--h payment method
+SELECT DISTINCT
+    payment_method,
+    CASE
+        WHEN payment_method IS NULL THEN 'NULL Value'
+        WHEN TRIM(payment_method) = '' THEN 'Empty String'
+        WHEN payment_method <> TRIM(payment_method) THEN 'Has Leading/Trailing Space'
+        ELSE 'Clean'
+    END AS status_cek
+FROM bronze_sales_transaction
+ORDER BY payment_method;
 
-SELECT DISTINCT payment_status, TRIM(payment_status) AS trimmed_val
+-- i payment status
+SELECT DISTINCT
+    payment_status,
+    CASE
+        WHEN payment_status IS NULL THEN 'NULL Value'
+        WHEN TRIM(payment_status) = '' THEN 'Empty String'
+        WHEN payment_status <> TRIM(payment_status) THEN 'Has Leading/Trailing Space'
+        ELSE 'Clean'
+    END AS status_cek
 FROM bronze_sales_transaction
 ORDER BY payment_status;
 
-SELECT DISTINCT currency, TRIM(currency) AS trimmed_val
+-- j. currency
+SELECT DISTINCT
+    currency,
+    CASE
+        WHEN currency IS NULL THEN 'NULL Value'
+        WHEN TRIM(currency) = '' THEN 'Empty String'
+        WHEN currency <> TRIM(currency) THEN 'Has Leading/Trailing Space'
+        WHEN currency <> UPPER(currency) THEN 'Has Upper Issue'
+        ELSE 'Clean'
+    END AS status_cek
 FROM bronze_sales_transaction
-ORDER BY currency;
+ORDER BY payment_status;
 
+-- shipping method
+SELECT DISTINCT
+    shipping_method,
+    CASE
+        WHEN shipping_method IS NULL THEN 'NULL Value'
+        WHEN TRIM(shipping_method) = '' THEN 'Empty String'
+        WHEN shipping_method <> TRIM(shipping_method) THEN 'Has Leading/Trailing Space'
+        WHEN shipping_method <> UPPER(shipping_method) THEN 'Has Upper Issue'
+        ELSE 'Clean'
+    END AS status_cek
+FROM bronze_sales_transaction
+ORDER BY shipping_method;
 
 -- ----------------------------------------------------------------------------
 -- 3. CEK KOLOM KONTEKSTUAL YANG SERING KOSONG (return_status, return_reason, coupon_code)
 -- Mengecek distribusi nilai termasuk NULL atau string kosong (wajar jika tidak
 -- ada retur atau tidak pakai kupon).
 -- ----------------------------------------------------------------------------
+SELECT 
+	delivery_days,
+    COUNT(*) AS total_rows
+FROM bronze_sales_transaction
+GROUP BY delivery_days
+ORDER BY total_rows DESC;
+
+SELECT 
+	estimated_delivery_days ,
+    COUNT(*) AS total_rows
+FROM bronze_sales_transaction
+GROUP BY estimated_delivery_days
+ORDER BY total_rows DESC;
+
+
+
 SELECT
     return_status,
     COUNT(*) AS total_rows
@@ -558,6 +614,55 @@ SELECT
     COUNT(*) AS total_rows
 FROM bronze_sales_transaction
 GROUP BY coupon_code
+ORDER BY total_rows DESC;
+
+SELECT
+    DISTINCT customer_rating,
+    COUNT(*) AS total_rows
+FROM bronze_sales_transaction
+GROUP BY customer_rating
+ORDER BY total_rows DESC;
+
+SELECT
+    DISTINCT review_sentiment,
+    COUNT(*) AS total_rows
+FROM bronze_sales_transaction
+GROUP BY review_sentiment
+ORDER BY total_rows DESC;
+
+SELECT
+    DISTINCT customer_review,
+    COUNT(*) AS total_rows
+FROM bronze_sales_transaction
+GROUP BY customer_review
+ORDER BY total_rows DESC;
+
+SELECT DISTINCT
+    marketing_channel,
+    CASE
+        WHEN marketing_channel IS NULL THEN 'NULL Value'
+        WHEN TRIM(marketing_channel) = '' THEN 'Empty String'
+        WHEN marketing_channel <> TRIM(marketing_channel) THEN 'Has Leading/Trailing Space'
+        ELSE 'Clean'
+    END AS status_cek
+FROM bronze_sales_transaction
+ORDER BY marketing_channel;
+
+SELECT
+    DISTINCT loyalty_points_earned,
+    loyalty_points_redeemed,
+    COUNT(*) AS total_rows
+FROM bronze_sales_transaction
+WHERE loyalty_points_earned < 0 AND loyalty_points_redeemed < 0
+GROUP BY loyalty_points_earned, loyalty_points_redeemed
+ORDER BY total_rows DESC;
+
+SELECT
+	customer_lifetime_value, is_repeat_customer, customer_order_count,
+    COUNT(*) AS total_rows
+FROM bronze_sales_transaction
+WHERE customer_lifetime_value < 0 OR is_repeat_customer <0 OR customer_order_count < 0
+GROUP BY customer_lifetime_value
 ORDER BY total_rows DESC;
 
 
