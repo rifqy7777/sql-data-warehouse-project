@@ -11,13 +11,22 @@ USE data_warehouse_ecommerce;
 -- I. CEK PRIMARY KEY (customer_id)
 -- Memastikan customer_id tidak NULL dan tidak ada baris ganda (duplikat).
 -- ----------------------------------------------------------------------------
+
 SELECT
     customer_id,
+    CASE
+    	WHEN customer_id IS NULL THEN 'NULL Value'
+        WHEN TRIM(customer_id) = '' THEN 'Empty String'
+        WHEN customer_id <> TRIM(customer_id) THEN 'Has Leading/Trailing Space'
+        ELSE 'Clean'
+    END AS status_check,
     COUNT(*) AS total_rows
 FROM bronze_customer_master
 GROUP BY customer_id
 HAVING customer_id IS NULL
-    OR COUNT(*) > 1;
+    OR COUNT(*) > 1
+   	OR TRIM(customer_id) = ''
+    OR customer_id <> TRIM(customer_id);
 
 
 -- ----------------------------------------------------------------------------
@@ -25,6 +34,7 @@ HAVING customer_id IS NULL
 -- Mendeteksi customer_name yang bernilai NULL, string kosong, atau punya spasi
 -- di awal/akhir teks.
 -- ----------------------------------------------------------------------------
+
 SELECT
     customer_id,
     customer_name,
@@ -32,10 +42,11 @@ SELECT
         WHEN customer_name IS NULL THEN 'NULL Value'
         WHEN TRIM(customer_name) = '' THEN 'Empty String'
         WHEN customer_name <> TRIM(customer_name) THEN 'Has Leading/Trailing Space'
+        WHEN COUNT(DISTINCT customer_name) > 1 THEN 'Duplicated'
         ELSE 'Clean'
     END AS status_cek
 FROM bronze_customer_master
-WHERE customer_name IS NULL
+HAVING COUNT(DISTINCT customer_id) > 1
    OR TRIM(customer_name) = ''
    OR customer_name <> TRIM(customer_name);
 
@@ -93,18 +104,18 @@ SELECT DISTINCT
     END AS status_cek
 FROM bronze_customer_master
 ORDER BY customer_state;
-
--- e. Customer Country: cek negara, NULL, dan spasi berlebih
-SELECT DISTINCT
-    customer_country,
-    CASE
-        WHEN customer_country IS NULL THEN 'NULL Value'
-        WHEN TRIM(customer_country) = '' THEN 'Empty String'
-        WHEN customer_country <> TRIM(customer_country) THEN 'Has Leading/Trailing Space'
-        ELSE 'Clean'
-    END AS status_cek
-FROM bronze_customer_master
-ORDER BY customer_country;
+    
+    -- e. Customer Country: cek negara, NULL, dan spasi berlebih
+    SELECT DISTINCT
+        customer_country,
+        CASE
+            WHEN customer_country IS NULL THEN 'NULL Value'
+            WHEN TRIM(customer_country) = '' THEN 'Empty String'
+            WHEN customer_country <> TRIM(customer_country) THEN 'Has Leading/Trailing Space'
+            ELSE 'Clean'
+        END AS status_cek
+    FROM bronze_customer_master
+    ORDER BY customer_country;
 
 -- f. Region: cek wilayah/region, NULL, dan spasi berlebih
 SELECT DISTINCT
@@ -118,16 +129,31 @@ SELECT DISTINCT
 FROM bronze_customer_master
 ORDER BY region;
 
+--g. Postal_Code, Null, duplicated dan spasi berlebih
+
+SELECT
+    customer_postal_code,
+    COUNT(DISTINCT customer_id) AS total_customer,
+    CASE
+        WHEN customer_postal_code IS NULL THEN 'NULL Value'
+        WHEN TRIM(customer_postal_code) = '' THEN 'Empty String'
+        WHEN customer_postal_code <> TRIM(customer_postal_code) THEN 'Has Leading/Trailing Space'
+        WHEN COUNT(DISTINCT customer_id) > 1 THEN 'Duplicated'
+        ELSE 'Clean'
+    END AS status_cek
+FROM bronze_customer_master
+GROUP BY customer_postal_code
+HAVING COUNT(DISTINCT customer_id) > 1
+ORDER BY total_customer DESC, customer_postal_code;
 
 -- ----------------------------------------------------------------------------
--- IV. CEK KOLOM NUMERIK & KODE POS (customer_age, postal_code, acquisition_cost)
+-- IV. CEK KOLOM NUMERIK & KODE POS (customer_age, & acquisition_cost)
 -- Memeriksa rentang nilai minimum/maksimum, NULL, dan potensi outlier/anomali.
 -- ----------------------------------------------------------------------------
 SELECT
     MIN(customer_age) AS min_age,
     MAX(customer_age) AS max_age,
     SUM(CASE WHEN customer_age IS NULL OR customer_age < 15 OR customer_age > 100 THEN 1 ELSE 0 END) AS age_anomalies,
-    SUM(CASE WHEN customer_postal_code IS NULL OR TRIM(CAST(customer_postal_code AS CHAR)) = '' THEN 1 ELSE 0 END) AS postal_code_null_or_empty,
     MIN(customer_acquisition_cost) AS min_cac,
     MAX(customer_acquisition_cost) AS max_cac,
     SUM(CASE WHEN customer_acquisition_cost IS NULL OR customer_acquisition_cost < 0 THEN 1 ELSE 0 END) AS cac_anomalies
@@ -325,14 +351,20 @@ USE data_warehouse_ecommerce;
 -- 1. CEK PRIMARY KEY (order_id)
 -- Memastikan setiap order_id unik (1 baris per order) dan tidak NULL/kosong.
 -- ----------------------------------------------------------------------------
-SELECT
-    order_id,
+SELECT order_id,
+    CASE
+    	WHEN order_id IS NULL THEN 'NULL VALUE'
+        WHEN TRIM(order_id) = '' THEN 'Empty String'
+        WHEN order_id <> TRIM(order_id) THEN 'Has Leading/Trailing Space'
+        ELSE 'Clean'
+    END AS status_check,
     COUNT(*) AS total_rows
 FROM bronze_sales_transaction
 GROUP BY order_id
 HAVING order_id IS NULL
+	OR COUNT(order_id) > 1
     OR TRIM(order_id) = ''
-    OR COUNT(*) > 1;
+    OR order_id <> TRIM(order_id);
 
 
 -- ----------------------------------------------------------------------------
@@ -340,14 +372,158 @@ HAVING order_id IS NULL
 -- Memastikan order_date & order_time bisa diparse dengan benar serta mengecek
 -- nilai unik pada status dan currency.
 -- ----------------------------------------------------------------------------
+-- a. order_date & order_time
 SELECT
     SUM(CASE WHEN order_date IS NULL OR TRIM(CAST(order_date AS CHAR)) = '' THEN 1 ELSE 0 END) AS null_or_empty_order_date,
     SUM(CASE WHEN order_time IS NULL OR TRIM(CAST(order_time AS CHAR)) = '' THEN 1 ELSE 0 END) AS null_or_empty_order_time
 FROM bronze_sales_transaction;
 
-SELECT DISTINCT order_status, TRIM(order_status) AS trimmed_val
+-- b.order_status
+SELECT 
+	order_status,
+    CASE
+    	WHEN order_status IS NULL THEN 'Null Value'
+        WHEN TRIM(order_status) = '' THEN 'Empty String'
+        WHEN order_status <> TRIM(order_status) THEN 'Has Leading/Trailing Space'
+        ELSE 'Clean'
+    END AS status_check
 FROM bronze_sales_transaction
-ORDER BY order_status;
+GROUP BY order_status, status_check;
+
+-- c.sales_channel
+SELECT 
+	sales_channel,
+    CASE
+    	WHEN sales_channel IS NULL THEN 'Null Value'
+        WHEN TRIM(sales_channel) = '' THEN 'Empty String'
+        WHEN sales_channel <> TRIM(sales_channel) THEN 'Has Leading/Trailing Space'
+        ELSE 'Clean'
+    END AS status_check
+FROM bronze_sales_transaction
+GROUP BY sales_channel, status_check;
+
+
+-- d. customer_id
+SELECT
+	order_id
+    customer_id,
+    COUNT(*) AS total_transaksi,
+    CASE
+        WHEN customer_id IS NULL THEN 'Null Value'
+        WHEN TRIM(customer_id) = '' THEN 'Empty String'
+        WHEN customer_id <> TRIM(customer_id) THEN 'Has Leading/Trailing Space'
+        ELSE 'Clean'
+    END AS status_check
+FROM bronze_sales_transaction
+GROUP BY
+    order_id, customer_id, status_check 
+ORDER BY total_transaksi DESC;
+
+--e. customer_name
+SELECT
+	order_id
+    customer_name,
+    COUNT(*) AS total_transaksi,
+    CASE
+        WHEN customer_name IS NULL THEN 'Null Value'
+        WHEN TRIM(customer_name) = '' THEN 'Empty String'
+        WHEN customer_name <> TRIM(customer_name) THEN 'Has Leading/Trailing Space'
+        ELSE 'Clean'
+    END AS status_check
+FROM bronze_sales_transaction
+GROUP BY
+    order_id, customer_name, status_check 
+ORDER BY total_transaksi DESC;
+
+-- a. Gender: cek variasi kategori, NULL, dan spasi berlebih
+SELECT DISTINCT
+    gender,
+    CASE
+        WHEN gender IS NULL THEN 'NULL Value'
+        WHEN TRIM(gender) = '' THEN 'Empty String'
+        WHEN gender <> TRIM(gender) THEN 'Has Leading/Trailing Space'
+        ELSE 'Clean'
+    END AS status_cek
+FROM bronze_sales_transaction
+ORDER BY gender;
+
+-- b. Customer Segment: cek variasi segmen pelanggan, NULL, dan spasi berlebih
+SELECT DISTINCT
+    customer_segment,
+    CASE
+        WHEN customer_segment IS NULL THEN 'NULL Value'
+        WHEN TRIM(customer_segment) = '' THEN 'Empty String'
+        WHEN customer_segment <> TRIM(customer_segment) THEN 'Has Leading/Trailing Space'
+        ELSE 'Clean'
+    END AS status_cek
+FROM bronze_sales_transaction
+ORDER BY customer_segment;
+
+-- c. Customer City: cek nama kota, NULL, dan spasi berlebih
+SELECT DISTINCT
+    customer_city,
+    CASE
+        WHEN customer_city IS NULL THEN 'NULL Value'
+        WHEN TRIM(customer_city) = '' THEN 'Empty String'
+        WHEN customer_city <> TRIM(customer_city) THEN 'Has Leading/Trailing Space'
+        ELSE 'Clean'
+    END AS status_cek
+FROM bronze_sales_transaction
+ORDER BY customer_city;
+
+-- d. Customer State: cek provinsi/negara bagian, NULL, dan spasi berlebih
+SELECT DISTINCT
+    customer_state,
+    CASE
+        WHEN customer_state IS NULL THEN 'NULL Value'
+        WHEN TRIM(customer_state) = '' THEN 'Empty String'
+        WHEN customer_state <> TRIM(customer_state) THEN 'Has Leading/Trailing Space'
+        ELSE 'Clean'
+    END AS status_cek
+FROM bronze_sales_transaction
+ORDER BY customer_state;
+    
+    -- e. Customer Country: cek negara, NULL, dan spasi berlebih
+    SELECT DISTINCT
+        customer_country,
+        CASE
+            WHEN customer_country IS NULL THEN 'NULL Value'
+            WHEN TRIM(customer_country) = '' THEN 'Empty String'
+            WHEN customer_country <> TRIM(customer_country) THEN 'Has Leading/Trailing Space'
+            ELSE 'Clean'
+        END AS status_cek
+    FROM bronze_sales_transaction
+    ORDER BY customer_country;
+
+-- f. Region: cek wilayah/region, NULL, dan spasi berlebih
+SELECT DISTINCT
+    region,
+    CASE
+        WHEN region IS NULL THEN 'NULL Value'
+        WHEN TRIM(region) = '' THEN 'Empty String'
+        WHEN region <> TRIM(region) THEN 'Has Leading/Trailing Space'
+        ELSE 'Clean'
+    END AS status_cek
+FROM bronze_sales_transaction
+ORDER BY region;
+
+-- g. Postal_Code, Null, duplicated dan spasi berlebih
+
+SELECT
+    customer_postal_code,
+    COUNT(DISTINCT customer_id) AS total_customer,
+    CASE
+        WHEN customer_postal_code IS NULL THEN 'NULL Value'
+        WHEN TRIM(customer_postal_code) = '' THEN 'Empty String'
+        WHEN customer_postal_code <> TRIM(customer_postal_code) THEN 'Has Leading/Trailing Space'
+        WHEN COUNT(DISTINCT customer_id) > 1 THEN 'Duplicated'
+        ELSE 'Clean'
+    END AS status_cek
+FROM bronze_sales_transaction
+GROUP BY customer_postal_code
+HAVING COUNT(DISTINCT customer_id) > 1
+ORDER BY total_customer DESC, customer_postal_code;
+
 
 SELECT DISTINCT payment_status, TRIM(payment_status) AS trimmed_val
 FROM bronze_sales_transaction
