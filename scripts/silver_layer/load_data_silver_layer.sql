@@ -1,7 +1,10 @@
 -- ============================================================================
--- TABEL 1: SILVER_Product Catalog
--- Tujuan: 
---
+-- TABEL 1: SILVER_PRODUCT_CATALOG
+-- Keterangan : Memindahkan data katalog produk dari Bronze ke Silver layer.
+-- Kenapa Silver layer: Merapikan spasi teks, menyeragamkan pembulatan angka
+--              harga/biaya/rating, menyaring product_id kosong, serta
+--              melakukan deduplikasi per product_id agar katalog bersih dan
+--              konsisten sebelum dipakai di tahap analisis/Gold.
 -- ============================================================================
 
 INSERT INTO silver_product_catalog (
@@ -52,10 +55,14 @@ WHERE rn = 1;
 SELECT *
 FROM silver_product_catalog;
 
+
 -- ============================================================================
 -- TABEL 2: SILVER_CUSTOMER_MASTER
--- Tujuan: 
---
+-- Keterangan : Memindahkan data master pelanggan dari Bronze ke Silver layer.
+-- Kenapa Silver layer: Membersihkan spasi berlebih pada atribut teks dan
+--              kode pos, membuang customer_id kosong/NULL, serta menjaga
+--              keunikan per customer_id tanpa menghapus entitas yang kebetulan
+--              bernama sama atau memaksakan aturan Gold terlalu dini.
 -- ============================================================================
 
 INSERT INTO silver_customer_master (
@@ -73,7 +80,7 @@ INSERT INTO silver_customer_master (
     data_load_dt
 )
 WITH cleaned_customer AS (
-    SELECT 
+    SELECT
         TRIM(customer_id) AS customer_id,
         TRIM(customer_name) AS customer_name,
         customer_age,
@@ -113,10 +120,15 @@ WHERE rn = 1;
 SELECT *
 FROM silver_customer_master;
 
+
 -- ============================================================================
 -- TABEL 3: SILVER_SALES_TRANSACTION
--- Tujuan: 
---
+-- Keterangan : Memindahkan data transaksi penjualan dari Bronze ke Silver layer.
+-- Kenapa Silver layer: Menstandarkan spasi, kapitalisasi currency, tipe
+--              numerik/boolean (is_repeat_customer), serta mengubah string
+--              kosong menjadi NULL pada kolom kondisional (retur, kupon,
+--              kampanye, ulasan) sambil mempertahankan nilai NULL vs 0 asli
+--              (seperti pada delivery_days/order batal) agar makna data jujur.
 -- ============================================================================
 
 INSERT INTO silver_sales_transaction (
@@ -273,11 +285,16 @@ SELECT
     CURRENT_TIMESTAMP AS data_load_dt
 FROM cleaned_transaction;
 
+
 -- ============================================================================
 -- TABEL 4: SILVER_ORDERS_ITEMS
--- Tujuan: 
---
+-- Keterangan : Memindahkan data detail item pesanan dari Bronze ke Silver.
+-- Kenapa Silver layer: Memastikan order_id dan product_id terisi serta bebas
+--              spasi, merapikan tipe integer dan pembulatan desimal pada
+--              harga, diskon, penjualan, biaya, dan profit, sekaligus
+--              menambahkan waktu muat (data_load_dt) untuk keterlacakan ETL.
 -- ============================================================================
+
 INSERT INTO silver_order_items (
     order_id,
     product_id,
@@ -329,9 +346,13 @@ SELECT
     CURRENT_TIMESTAMP AS data_load_dt
 FROM cleaned_orders;
 
+
 -- ============================================================================
 -- VERIFIKASI HASIL LOAD
+-- Keterangan : Mengecek jumlah baris yang berhasil masuk ke tiap tabel Silver
+--              setelah proses INSERT dijalankan.
 -- ============================================================================
+
 SELECT 'silver_product_catalog' AS table_name, COUNT(*) AS total_rows FROM silver_product_catalog
 UNION ALL
 SELECT 'silver_customer_master', COUNT(*) FROM silver_customer_master
