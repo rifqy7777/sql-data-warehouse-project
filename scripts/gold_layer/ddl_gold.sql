@@ -57,14 +57,13 @@ INNER JOIN silver_customer_master c
 
 
 
-
 SELECT
-	-- demografi & segment
-	c.customer_id,
+    -- demografi & segment
+    c.customer_id,
     c.customer_name,
     c.gender,
     c.customer_segment,
-    COALESCE(TRIM(s.customer_type), 'Prospect') AS customer_type
+    COALESCE(NULLIF(TRIM(s.customer_type), ''), 'Prospect') AS customer_type,
     -- geografi
     c.region,
     c.customer_country,
@@ -73,11 +72,25 @@ SELECT
     c.customer_postal_code,
     -- status & nilai crm
     c.customer_acquisition_cost,
-    s.customer_lifetime_value,
-    s.is_repeat_customer,
-    s.customer_order_count
+    COALESCE(s.customer_lifetime_value, 0.00) AS customer_lifetime_value,
+    COALESCE(s.is_repeat_customer, 0) AS is_repeat_customer,
+    COALESCE(s.customer_order_count, 0) AS customer_order_count
 FROM silver_customer_master c
-LEFT JOIN silver_sales_transaction s
+LEFT JOIN (
+    SELECT
+        customer_id,
+        order_date,
+        order_id,
+        customer_type,
+        customer_lifetime_value,
+        is_repeat_customer,
+        customer_order_count,
+        ROW_NUMBER() OVER (
+            PARTITION BY customer_id
+            ORDER BY order_date DESC, order_id DESC
+        ) AS rn
+    FROM silver_sales_transaction
+    WHERE customer_id IS NOT NULL
+) AS s
     ON c.customer_id = s.customer_id
-HAVING MAX(s.order_date)    
-
+   AND s.rn = 1;
