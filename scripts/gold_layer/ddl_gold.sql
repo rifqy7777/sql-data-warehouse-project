@@ -55,7 +55,9 @@ INNER JOIN silver_customer_master c
 -- status/ nilai crm
 
 
-
+ALTER TABLE dim_crm_customer_info
+    ADD COLUMN customer_key INT AUTO_INCREMENT PRIMARY KEY FIRST,
+    ADD UNIQUE INDEX idx_customer_id (customer_id);
 
 SELECT
     -- demografi & segment
