@@ -191,4 +191,87 @@ SELECT
     CURRENT_TIMESTAMP AS data_load_dt
 FROM silver_product_catalog;
 
-	
+-- dim_erp_channel_payment
+-- 1. Buat tabel dimensi di Gold layer
+CREATE TABLE dim_erp_channel_payment (
+    channel_payment_key INT AUTO_INCREMENT PRIMARY KEY,
+ 	sales_channel  VARCHAR(30),
+    payment_method VARCHAR(30),
+    payment_status VARCHAR(20),
+    currency	   VARCHAR(5),
+    -- Composite index untuk mempercepat lookup ke fact_orders
+    UNIQUE INDEX idx_channel_payment_combo (
+        sales_channel, payment_method, payment_status, currency
+    )
+);
+
+-- 2. Ekstrak 780 kombinasi unik dari Silver layer
+INSERT INTO dim_erp_channel_payment (
+    sales_channel, payment_method, payment_status, currency
+)
+SELECT DISTINCT
+    sales_channel,
+    payment_method,
+    payment_status,
+    currency
+FROM silver_sales_transaction
+ORDER BY sales_channel, payment_method, payment_status, currency;
+
+--dim_erp_logisik
+CREATE TABLE dim_erp_logistics (
+    logistics_key INT AUTO_INCREMENT PRIMARY KEY,
+    shipping_method           VARCHAR(20) NOT NULL,
+    warehouse                 VARCHAR(15) NOT NULL,
+    delivery_status           VARCHAR(20) NOT NULL,
+    return_status             VARCHAR(20) NOT NULL,
+    return_reason             VARCHAR(50) NOT NULL,
+    
+    -- Composite index untuk mempercepat lookup ke fact_orders
+    UNIQUE INDEX idx_logistics_combo (
+        shipping_method, warehouse, delivery_status, return_status, return_reason
+    )
+);
+
+-- 2. Ekstrak 912 kombinasi unik dari Silver layer
+INSERT INTO dim_erp_logistics (
+    shipping_method, warehouse, delivery_status, return_status, return_reason
+)
+SELECT DISTINCT
+    shipping_method,
+    warehouse,
+    delivery_status,
+    COALESCE(return_status, 'Not Returned') AS return_status,
+    COALESCE(return_reason, 'Not Applicable') AS return_reason
+FROM silver_sales_transaction
+ORDER BY warehouse, shipping_method, delivery_status, return_status, return_reason;
+
+-- dim_crm_marketing_promo
+-- 1. Buat tabel dimensi di Gold layer
+CREATE TABLE dim_crm_marketing_promo (
+    promo_key INT AUTO_INCREMENT PRIMARY KEY,
+    marketing_channel VARCHAR(30) NOT NULL,
+    campaign_name VARCHAR(50) NOT NULL,
+    coupon_code VARCHAR(20) NOT NULL,
+    has_coupon BOOLEAN NOT NULL,
+    
+    -- Composite index untuk mempercepat lookup ke fact_orders
+    UNIQUE INDEX idx_promo_combo (
+        marketing_channel, campaign_name, coupon_code
+    )
+);
+
+-- 2. Ekstrak 1.230 kombinasi unik dari Silver layer
+INSERT INTO dim_crm_marketing_promo (
+    marketing_channel, campaign_name, coupon_code, has_coupon
+)
+SELECT DISTINCT
+    marketing_channel,
+    COALESCE(NULLIF(TRIM(campaign_name), ''), 'No Campaign') AS campaign_name,
+    COALESCE(NULLIF(TRIM(coupon_code), ''), 'No Coupon') AS coupon_code,
+    CASE 
+        WHEN coupon_code IS NOT NULL AND TRIM(coupon_code) <> '' THEN TRUE 
+        ELSE FALSE 
+    END AS has_coupon
+FROM silver_sales_transaction
+ORDER BY marketing_channel, campaign_name, coupon_code;
+
