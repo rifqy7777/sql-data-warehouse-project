@@ -56,7 +56,11 @@ INNER JOIN silver_customer_master c
 
 
 USE data_warehouse_ecommerce;
+USE data_warehouse_ecommerce;
 
+-- ============================================================================
+-- 1. DIM_CRM_CUSTOMER_INFO (25.000 baris)
+-- ============================================================================
 DROP TABLE IF EXISTS dim_crm_customer_info;
 
 CREATE TABLE dim_crm_customer_info (
@@ -102,20 +106,17 @@ INSERT INTO dim_crm_customer_info (
     data_load_dt
 )
 SELECT
-    -- demografi & segment
     c.customer_id,
     c.customer_name,
     c.customer_age,
     c.gender,
     c.customer_segment,
     COALESCE(NULLIF(TRIM(s.customer_type), ''), 'Prospect') AS customer_type,
-    -- geografi
     c.region,
     c.customer_country,
     c.customer_state,
     c.customer_city,
     c.customer_postal_code,
-    -- status & nilai crm
     c.customer_acquisition_cost,
     COALESCE(s.customer_lifetime_value, 0.00) AS customer_lifetime_value,
     COALESCE(s.is_repeat_customer, 0) AS is_repeat_customer,
@@ -142,14 +143,14 @@ LEFT JOIN (
    AND s.rn = 1;
 
 
--- dim_crm_product_info
-USE data_warehouse_ecommerce;
-
+-- ============================================================================
+-- 2. DIM_ERP_PRODUCT_INFO (1.175 baris)
+-- ============================================================================
 DROP TABLE IF EXISTS dim_erp_product_info;
 
 CREATE TABLE dim_erp_product_info (
-    product_key    INT UNSIGNED   NOT NULL AUTO_INCREMENT,
-	product_id          VARCHAR(20),
+    product_key         INT UNSIGNED   NOT NULL AUTO_INCREMENT,
+    product_id          VARCHAR(20)    NOT NULL,
     product_name        VARCHAR(120),
     product_category    VARCHAR(50),
     product_subcategory VARCHAR(50),
@@ -158,7 +159,7 @@ CREATE TABLE dim_erp_product_info (
     unit_price          DECIMAL(12, 2),
     product_cost        DECIMAL(12, 2),
     product_rating      DECIMAL(3, 1),
-    data_load_dt        DATETIME DEFAULT CURRENT_TIMESTAMP
+    data_load_dt        DATETIME       DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (product_key),
     UNIQUE KEY uq_product_id (product_id)
 );
@@ -166,16 +167,16 @@ CREATE TABLE dim_erp_product_info (
 TRUNCATE TABLE dim_erp_product_info;
 
 INSERT INTO dim_erp_product_info (
-        product_id,
-        product_name,
-        product_category,
-        product_subcategory,
-        brand,
-        supplier,
-        unit_price,
-        product_cost,
-        product_rating,
-        data_load_dt
+    product_id,
+    product_name,
+    product_category,
+    product_subcategory,
+    brand,
+    supplier,
+    unit_price,
+    product_cost,
+    product_rating,
+    data_load_dt
 )
 SELECT
     product_id,
@@ -187,91 +188,213 @@ SELECT
     unit_price,
     product_cost,
     product_rating,
-    data_load_dt
     CURRENT_TIMESTAMP AS data_load_dt
 FROM silver_product_catalog;
 
--- dim_erp_channel_payment
--- 1. Buat tabel dimensi di Gold layer
+
+-- ============================================================================
+-- 3. DIM_ERP_CHANNEL_PAYMENT (780 baris)
+-- ============================================================================
+DROP TABLE IF EXISTS dim_erp_channel_payment;
+
 CREATE TABLE dim_erp_channel_payment (
-    channel_payment_key INT AUTO_INCREMENT PRIMARY KEY,
- 	sales_channel  VARCHAR(30),
-    payment_method VARCHAR(30),
-    payment_status VARCHAR(20),
-    currency	   VARCHAR(5),
-    -- Composite index untuk mempercepat lookup ke fact_orders
+    channel_payment_key INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    sales_channel       VARCHAR(30)  NOT NULL,
+    payment_method      VARCHAR(30)  NOT NULL,
+    payment_status      VARCHAR(20)  NOT NULL,
+    currency            VARCHAR(5)   NOT NULL,
+    data_load_dt        DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (channel_payment_key),
     UNIQUE INDEX idx_channel_payment_combo (
         sales_channel, payment_method, payment_status, currency
     )
 );
 
--- 2. Ekstrak 780 kombinasi unik dari Silver layer
+TRUNCATE TABLE dim_erp_channel_payment;
+
 INSERT INTO dim_erp_channel_payment (
-    sales_channel, payment_method, payment_status, currency
+    sales_channel,
+    payment_method,
+    payment_status,
+    currency,
+    data_load_dt
 )
 SELECT DISTINCT
     sales_channel,
     payment_method,
     payment_status,
-    currency
+    currency,
+    CURRENT_TIMESTAMP AS data_load_dt
 FROM silver_sales_transaction
 ORDER BY sales_channel, payment_method, payment_status, currency;
 
---dim_erp_logisik
+
+-- ============================================================================
+-- 4. DIM_ERP_LOGISTICS (912 baris)
+-- ============================================================================
+DROP TABLE IF EXISTS dim_erp_logistics;
+
 CREATE TABLE dim_erp_logistics (
-    logistics_key INT AUTO_INCREMENT PRIMARY KEY,
-    shipping_method           VARCHAR(20) NOT NULL,
-    warehouse                 VARCHAR(15) NOT NULL,
-    delivery_status           VARCHAR(20) NOT NULL,
-    return_status             VARCHAR(20) NOT NULL,
-    return_reason             VARCHAR(50) NOT NULL,
-    
-    -- Composite index untuk mempercepat lookup ke fact_orders
+    logistics_key   INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    shipping_method VARCHAR(20)  NOT NULL,
+    warehouse       VARCHAR(15)  NOT NULL,
+    delivery_status VARCHAR(20)  NOT NULL,
+    return_status   VARCHAR(20)  NOT NULL,
+    return_reason   VARCHAR(50)  NOT NULL,
+    data_load_dt    DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (logistics_key),
     UNIQUE INDEX idx_logistics_combo (
         shipping_method, warehouse, delivery_status, return_status, return_reason
     )
 );
 
--- 2. Ekstrak 912 kombinasi unik dari Silver layer
+TRUNCATE TABLE dim_erp_logistics;
+
 INSERT INTO dim_erp_logistics (
-    shipping_method, warehouse, delivery_status, return_status, return_reason
+    shipping_method,
+    warehouse,
+    delivery_status,
+    return_status,
+    return_reason,
+    data_load_dt
 )
 SELECT DISTINCT
     shipping_method,
     warehouse,
     delivery_status,
-    COALESCE(return_status, 'Not Returned') AS return_status,
-    COALESCE(return_reason, 'Not Applicable') AS return_reason
+    COALESCE(NULLIF(TRIM(return_status), ''), 'Not Returned') AS return_status,
+    COALESCE(NULLIF(TRIM(return_reason), ''), 'Not Applicable') AS return_reason,
+    CURRENT_TIMESTAMP AS data_load_dt
 FROM silver_sales_transaction
 ORDER BY warehouse, shipping_method, delivery_status, return_status, return_reason;
 
--- dim_crm_marketing_promo
--- 1. Buat tabel dimensi di Gold layer
+
+-- ============================================================================
+-- 5. DIM_CRM_MARKETING_PROMO (1.230 baris)
+-- ============================================================================
+DROP TABLE IF EXISTS dim_crm_marketing_promo;
+
 CREATE TABLE dim_crm_marketing_promo (
-    promo_key INT AUTO_INCREMENT PRIMARY KEY,
-    marketing_channel VARCHAR(30) NOT NULL,
-    campaign_name VARCHAR(50) NOT NULL,
-    coupon_code VARCHAR(20) NOT NULL,
-    has_coupon BOOLEAN NOT NULL,
-    
-    -- Composite index untuk mempercepat lookup ke fact_orders
+    promo_key         INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    marketing_channel VARCHAR(30)  NOT NULL,
+    campaign_name     VARCHAR(50)  NOT NULL,
+    coupon_code       VARCHAR(20)  NOT NULL,
+    has_coupon        TINYINT(1)   NOT NULL,
+    data_load_dt      DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (promo_key),
     UNIQUE INDEX idx_promo_combo (
         marketing_channel, campaign_name, coupon_code
     )
 );
 
--- 2. Ekstrak 1.230 kombinasi unik dari Silver layer
+TRUNCATE TABLE dim_crm_marketing_promo;
+
 INSERT INTO dim_crm_marketing_promo (
-    marketing_channel, campaign_name, coupon_code, has_coupon
+    marketing_channel,
+    campaign_name,
+    coupon_code,
+    has_coupon,
+    data_load_dt
 )
 SELECT DISTINCT
     marketing_channel,
     COALESCE(NULLIF(TRIM(campaign_name), ''), 'No Campaign') AS campaign_name,
     COALESCE(NULLIF(TRIM(coupon_code), ''), 'No Coupon') AS coupon_code,
     CASE 
-        WHEN coupon_code IS NOT NULL AND TRIM(coupon_code) <> '' THEN TRUE 
-        ELSE FALSE 
-    END AS has_coupon
+        WHEN coupon_code IS NOT NULL AND TRIM(coupon_code) <> '' THEN 1 
+        ELSE 0 
+    END AS has_coupon,
+    CURRENT_TIMESTAMP AS data_load_dt
 FROM silver_sales_transaction
 ORDER BY marketing_channel, campaign_name, coupon_code;
 
+
+-- ============================================================================
+-- 6. DIM_DATE (1.826 baris)
+-- ============================================================================
+DROP TABLE IF EXISTS dim_date;
+
+CREATE TABLE dim_date (
+    date_key     INT UNSIGNED      NOT NULL,
+    full_date    DATE              NOT NULL,
+    day_of_month TINYINT UNSIGNED  NOT NULL,
+    month_num    TINYINT UNSIGNED  NOT NULL,
+    month_name   VARCHAR(15)       NOT NULL,
+    quarter_num  TINYINT UNSIGNED  NOT NULL,
+    year_num     SMALLINT UNSIGNED NOT NULL,
+    day_name     VARCHAR(15)       NOT NULL,
+    is_weekend   TINYINT(1)        NOT NULL,
+    data_load_dt DATETIME          DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (date_key),
+    UNIQUE KEY uq_full_date (full_date)
+);
+
+TRUNCATE TABLE dim_date;
+
+INSERT INTO dim_date (
+    date_key,
+    full_date,
+    day_of_month,
+    month_num,
+    month_name,
+    quarter_num,
+    year_num,
+    day_name,
+    is_weekend,
+    data_load_dt
+)
+SELECT DISTINCT
+    CAST(DATE_FORMAT(STR_TO_DATE(order_date, '%Y-%m-%d'), '%Y%m%d') AS UNSIGNED) AS date_key,
+    STR_TO_DATE(order_date, '%Y-%m-%d') AS full_date,
+    DAY(STR_TO_DATE(order_date, '%Y-%m-%d')) AS day_of_month,
+    MONTH(STR_TO_DATE(order_date, '%Y-%m-%d')) AS month_num,
+    MONTHNAME(STR_TO_DATE(order_date, '%Y-%m-%d')) AS month_name,
+    QUARTER(STR_TO_DATE(order_date, '%Y-%m-%d')) AS quarter_num,
+    YEAR(STR_TO_DATE(order_date, '%Y-%m-%d')) AS year_num,
+    DAYNAME(STR_TO_DATE(order_date, '%Y-%m-%d')) AS day_name,
+    CASE WHEN DAYOFWEEK(STR_TO_DATE(order_date, '%Y-%m-%d')) IN (1, 7) THEN 1 ELSE 0 END AS is_weekend,
+    CURRENT_TIMESTAMP AS data_load_dt
+FROM silver_sales_transaction
+ORDER BY date_key;
+
+
+-- ============================================================================
+-- 7. DIM_TIME (68.991 baris)
+-- ============================================================================
+DROP TABLE IF EXISTS dim_time;
+
+CREATE TABLE dim_time (
+    time_key     INT UNSIGNED     NOT NULL,
+    full_time    TIME             NOT NULL,
+    hour_num     TINYINT UNSIGNED NOT NULL,
+    minute_num   TINYINT UNSIGNED NOT NULL,
+    time_bucket  VARCHAR(20)      NOT NULL,
+    data_load_dt DATETIME         DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (time_key),
+    UNIQUE KEY uq_full_time (full_time)
+);
+
+TRUNCATE TABLE dim_time;
+
+INSERT INTO dim_time (
+    time_key,
+    full_time,
+    hour_num,
+    minute_num,
+    time_bucket,
+    data_load_dt
+)
+SELECT DISTINCT
+    CAST(TIME_FORMAT(STR_TO_DATE(order_time, '%H:%i:%s'), '%H%i%s') AS UNSIGNED) AS time_key,
+    STR_TO_DATE(order_time, '%H:%i:%s') AS full_time,
+    HOUR(STR_TO_DATE(order_time, '%H:%i:%s')) AS hour_num,
+    MINUTE(STR_TO_DATE(order_time, '%H:%i:%s')) AS minute_num,
+    CASE 
+        WHEN HOUR(STR_TO_DATE(order_time, '%H:%i:%s')) BETWEEN 6 AND 11 THEN 'Morning (06-11)'
+        WHEN HOUR(STR_TO_DATE(order_time, '%H:%i:%s')) BETWEEN 12 AND 17 THEN 'Afternoon (12-17)'
+        WHEN HOUR(STR_TO_DATE(order_time, '%H:%i:%s')) BETWEEN 18 AND 23 THEN 'Evening (18-23)'
+        ELSE 'Night (00-05)'
+    END AS time_bucket,
+    CURRENT_TIMESTAMP AS data_load_dt
+FROM silver_sales_transaction
+ORDER BY time_key;
