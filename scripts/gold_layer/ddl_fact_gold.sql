@@ -227,3 +227,21 @@ JOIN dim_erp_product_info dp
 JOIN fact_orders fo
     ON ci.order_id = fo.order_id
 WHERE ci.rn = 1;
+
+SELECT 'dim_crm_customer_info'   AS table_name, COUNT(*) AS total_rows FROM dim_crm_customer_info   -- Target: 25.000
+UNION ALL
+SELECT 'dim_erp_product_info',                  COUNT(*) FROM dim_erp_product_info                  -- Target: 1.175
+UNION ALL
+SELECT 'dim_erp_channel_payment',               COUNT(*) FROM dim_erp_channel_payment               -- Target: 780
+UNION ALL
+SELECT 'dim_erp_logistics',                     COUNT(*) FROM dim_erp_logistics                     -- Target: 912
+UNION ALL
+SELECT 'dim_crm_marketing_promo',               COUNT(*) FROM dim_crm_marketing_promo               -- Target: 1.230
+UNION ALL
+SELECT 'dim_date',                              COUNT(*) FROM dim_date                              -- Target: 1.826
+UNION ALL
+SELECT 'dim_time',                              COUNT(*) FROM dim_time                              -- Target: 68.991
+UNION ALL
+SELECT 'fact_orders',                           COUNT(*) FROM fact_orders                           -- Target: 138.116
+UNION ALL
+SELECT 'fact_order_items',                      COUNT(*) FROM fact_order_items;                     -- Target: 397.482
