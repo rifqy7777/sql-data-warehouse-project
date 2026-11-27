@@ -55,14 +55,57 @@ INNER JOIN silver_customer_master c
 -- status/ nilai crm
 
 
-ALTER TABLE dim_crm_customer_info
-    ADD COLUMN customer_key INT AUTO_INCREMENT PRIMARY KEY FIRST,
-    ADD UNIQUE INDEX idx_customer_id (customer_id);
+USE data_warehouse_ecommerce;
 
+DROP TABLE IF EXISTS dim_crm_customer_info;
+
+CREATE TABLE dim_crm_customer_info (
+    customer_key              INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    customer_id               VARCHAR(20)  NOT NULL,
+    customer_name             VARCHAR(100),
+    customer_age              INT,
+    gender                    VARCHAR(20),
+    customer_segment          VARCHAR(20),
+    customer_type             VARCHAR(20)  NOT NULL DEFAULT 'Prospect',
+    region                    VARCHAR(20),
+    customer_country          VARCHAR(30),
+    customer_state            VARCHAR(50),
+    customer_city             VARCHAR(50),
+    customer_postal_code      VARCHAR(20),
+    customer_acquisition_cost DECIMAL(12, 2),
+    customer_lifetime_value   DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+    is_repeat_customer        TINYINT(1)   NOT NULL DEFAULT 0,
+    customer_order_count      INT UNSIGNED NOT NULL DEFAULT 0,
+    data_load_dt              DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (customer_key),
+    UNIQUE KEY uq_customer_id (customer_id)
+);
+
+TRUNCATE TABLE dim_crm_customer_info;
+
+INSERT INTO dim_crm_customer_info (
+    customer_id,
+    customer_name,
+    customer_age,
+    gender,
+    customer_segment,
+    customer_type,
+    region,
+    customer_country,
+    customer_state,
+    customer_city,
+    customer_postal_code,
+    customer_acquisition_cost,
+    customer_lifetime_value,
+    is_repeat_customer,
+    customer_order_count,
+    data_load_dt
+)
 SELECT
     -- demografi & segment
     c.customer_id,
     c.customer_name,
+    c.customer_age,
     c.gender,
     c.customer_segment,
     COALESCE(NULLIF(TRIM(s.customer_type), ''), 'Prospect') AS customer_type,
@@ -76,7 +119,8 @@ SELECT
     c.customer_acquisition_cost,
     COALESCE(s.customer_lifetime_value, 0.00) AS customer_lifetime_value,
     COALESCE(s.is_repeat_customer, 0) AS is_repeat_customer,
-    COALESCE(s.customer_order_count, 0) AS customer_order_count
+    COALESCE(s.customer_order_count, 0) AS customer_order_count,
+    CURRENT_TIMESTAMP AS data_load_dt
 FROM silver_customer_master c
 LEFT JOIN (
     SELECT
@@ -96,3 +140,55 @@ LEFT JOIN (
 ) AS s
     ON c.customer_id = s.customer_id
    AND s.rn = 1;
+
+
+-- dim_crm_product_info
+USE data_warehouse_ecommerce;
+
+DROP TABLE IF EXISTS dim_erp_product_info;
+
+CREATE TABLE dim_erp_product_info (
+    product_key    INT UNSIGNED   NOT NULL AUTO_INCREMENT,
+	product_id          VARCHAR(20),
+    product_name        VARCHAR(120),
+    product_category    VARCHAR(50),
+    product_subcategory VARCHAR(50),
+    brand               VARCHAR(50),
+    supplier            VARCHAR(50),
+    unit_price          DECIMAL(12, 2),
+    product_cost        DECIMAL(12, 2),
+    product_rating      DECIMAL(3, 1),
+    data_load_dt        DATETIME DEFAULT CURRENT_TIMESTAMP
+    PRIMARY KEY (product_key),
+    UNIQUE KEY uq_product_id (product_id)
+);
+
+TRUNCATE TABLE dim_erp_product_info;
+
+INSERT INTO dim_erp_product_info (
+        product_id,
+        product_name,
+        product_category,
+        product_subcategory,
+        brand,
+        supplier,
+        unit_price,
+        product_cost,
+        product_rating,
+        data_load_dt
+)
+SELECT
+    product_id,
+    product_name,
+    product_category,
+    product_subcategory,
+    brand,
+    supplier,
+    unit_price,
+    product_cost,
+    product_rating,
+    data_load_dt
+    CURRENT_TIMESTAMP AS data_load_dt
+FROM silver_product_catalog;
+
+	
