@@ -82,3 +82,18 @@ SELECT
     SUM(net_sales)                                                    AS total_net_sales,
     SUM(profit)                                                       AS total_profit
 FROM fact_order_items;
+
+ALTER TABLE fact_orders
+    ADD CONSTRAINT fk_fo_customer FOREIGN KEY (customer_key)        REFERENCES dim_crm_customer_info(customer_key),
+    ADD CONSTRAINT fk_fo_date     FOREIGN KEY (date_key)            REFERENCES dim_date(date_key),
+    ADD CONSTRAINT fk_fo_time     FOREIGN KEY (time_key)            REFERENCES dim_time(time_key),
+    ADD CONSTRAINT fk_fo_logistic FOREIGN KEY (logistics_key)       REFERENCES dim_erp_logistics(logistics_key),
+    ADD CONSTRAINT fk_fo_channel  FOREIGN KEY (channel_payment_key) REFERENCES dim_erp_channel_payment(channel_payment_key),
+    ADD CONSTRAINT fk_fo_promo    FOREIGN KEY (promo_key)           REFERENCES dim_crm_marketing_promo(promo_key);
+
+ALTER TABLE fact_order_items
+    ADD CONSTRAINT fk_foi_order    FOREIGN KEY (order_id)     REFERENCES fact_orders(order_id),
+    ADD CONSTRAINT fk_foi_product  FOREIGN KEY (product_key)  REFERENCES dim_erp_product_info(product_key),
+    ADD CONSTRAINT fk_foi_customer FOREIGN KEY (customer_key) REFERENCES dim_crm_customer_info(customer_key),
+    ADD CONSTRAINT fk_foi_date     FOREIGN KEY (date_key)     REFERENCES dim_date(date_key),
+    ADD CONSTRAINT fk_foi_promo    FOREIGN KEY (promo_key)    REFERENCES dim_crm_marketing_promo(promo_key);
