@@ -3,9 +3,6 @@
 -- Keterangan : Memuat file CSV mentah ke tabel Bronze menggunakan pola
 --              TRUNCATE + LOAD DATA INFILE agar dapat dijalankan ulang
 --              dengan aman tanpa menggandakan data.
--- Kenapa tidak pakai Stored Procedure: MySQL melarang LOAD DATA INFILE di
---              dalam stored procedure; menjalankan skrip ini langsung juga
---              memudahkan pemantauan hasil load per file CSV.
 -- ============================================================================
 
 -- I. LOAD DATA: customer_master.csv -> bronze_customer_master
