@@ -553,6 +553,34 @@ WHERE profit < 0
   )
 ORDER BY profit ASC;
 
+-- Phase 5: Finalization of the Data Quality (DQ) audit summary for the
+--          bronze_order_items table before proceeding to the Silver Layer transformation.
+-- Status : Validation completed. No invalid values were identified in quantity,
+--          unit_price, or gross_sales. Of the 5,426 rows with negative profit,
+--          records that deviated from all three formula patterns were first
+--          isolated as Formula Mismatch / Anomaly, while the remaining records
+--          were confirmed as formula-consistent and legitimate loss-making
+--          transactions, eligible for further processing into the Silver Layer.
+
+SELECT
+    CASE
+        WHEN ROUND(net_sales - product_cost - shipping_cost - tax_amount, 2) <> ROUND(profit, 2)
+         AND ROUND(net_sales - product_cost - shipping_cost, 2) <> ROUND(profit, 2)
+         AND ROUND(net_sales - product_cost, 2) <> ROUND(profit, 2) THEN 'Formula Mismatch / Anomaly'
+        WHEN product_cost > (unit_price * quantity) THEN 'Base Cost > Gross Sales'
+        WHEN discount_percentage > 0.50 OR discount_amount > (gross_sales * 0.50) THEN 'Heavy Discount (>50%)'
+        WHEN (net_sales - product_cost) >= 0 AND profit < 0 THEN 'Shipping/Tax Dragged Profit Negative'
+        ELSE 'Near-50% Discount / Valid Margin Compression'
+    END AS loss_driver,
+    COUNT(*) AS total_rows,
+    ROUND(SUM(profit), 2) AS total_profit_impact,
+    ROUND(MIN(profit), 2) AS worst_profit,
+    ROUND(AVG(profit), 2) AS avg_profit,
+    ROUND(AVG(discount_percentage) * 100, 2) AS avg_discount_pct
+FROM bronze_order_items
+WHERE profit < 0
+GROUP BY loss_driver
+ORDER BY total_rows DESC;
 -- ============================================================================
 -- TABLE 4: BRONZE_SALES_TRANSACTION (DATA QUALITY CHECK)
 -- Description : Initial data quality audit on the sales transaction table.
@@ -1054,8 +1082,7 @@ FROM bronze_sales_transaction;
 --          require sample inspection in Phase 3 to verify the underlying profit formula.
 SELECT
     CASE
-        WHEN product_cost > (unit_price * quantity) THEN 'Base Cost > Gross Sales'
-        WHEN discount_percentage > 0.50 OR discount_amount > (gross_sales * 0.50) THEN 'Heavy Discount (>50%)'
+        WHEN discount_amount > (gross_sales * 0.50) THEN 'Heavy Discount (>50%)'
         WHEN (net_sales - product_cost) >= 0 AND profit < 0 THEN 'Shipping/Tax Dragged Profit Negative'
         WHEN ROUND(net_sales - product_cost - shipping_cost - tax_amount, 2) <> ROUND(profit, 2)
          AND ROUND(net_sales - product_cost, 2) <> ROUND(profit, 2) THEN 'Formula Mismatch / Anomaly'
@@ -1064,8 +1091,8 @@ SELECT
     COUNT(*) AS total_rows,
     ROUND(MIN(profit), 2) AS worst_profit,
     ROUND(AVG(profit), 2) AS avg_profit,
-    ROUND(AVG(discount_percentage) * 100, 2) AS avg_discount_pct
-FROM bronze_order_items
+    ROUND(AVG(discount_amount) * 100, 2) AS avg_discount_amt
+FROM bronze_sales_transaction
 WHERE profit < 0
 GROUP BY loss_driver
 ORDER BY total_rows DESC;
@@ -1082,9 +1109,7 @@ ORDER BY total_rows DESC;
 
 SELECT
     order_id,
-    product_id,
     quantity,
-    unit_price,
     discount_amount,
     gross_sales,
     tax_amount,
@@ -1094,7 +1119,7 @@ SELECT
     profit,
     ROUND(net_sales - product_cost, 2) AS diff_net_minus_cost,
     ROUND(net_sales - product_cost - shipping_cost - tax_amount, 2) AS diff_after_ship_tax
-FROM bronze_order_items
+FROM bronze_sales_transaction
 WHERE profit < 0
   AND ROUND(net_sales - product_cost - shipping_cost - tax_amount, 2) <> ROUND(profit, 2)
   AND ROUND(net_sales - product_cost, 2) <> ROUND(profit, 2)
@@ -1110,10 +1135,7 @@ LIMIT 15;
 
 SELECT
     order_id,
-    product_id,
     quantity,
-    unit_price,
-    discount_percentage,
     discount_amount,
     gross_sales,
     tax_amount,
@@ -1124,10 +1146,9 @@ SELECT
     ROUND(net_sales - product_cost, 2) AS calc_net_minus_cost,
     ROUND(net_sales - product_cost - shipping_cost, 2) AS calc_after_shipping,
     ROUND(net_sales - product_cost - shipping_cost - tax_amount, 2) AS calc_after_ship_tax
-FROM bronze_order_items
+FROM bronze_sales_transaction
 WHERE profit < 0
-  AND NOT (product_cost > (unit_price * quantity))
-  AND NOT (discount_percentage > 0.50 OR discount_amount > (gross_sales * 0.50))
+  AND NOT discount_amount > (gross_sales * 0.50)
   AND NOT ((net_sales - product_cost) >= 0 AND profit < 0)
   AND NOT (
       ROUND(net_sales - product_cost - shipping_cost - tax_amount, 2) <> ROUND(profit, 2)
@@ -1135,3 +1156,30 @@ WHERE profit < 0
   )
 ORDER BY profit ASC;
 
+-- Phase 5: Finalization of the Data Quality (DQ) audit summary for the
+--          bronze_order_items table before proceeding to the Silver Layer transformation.
+-- Status : Validation completed. No invalid values were identified in quantity,
+--          unit_price, or gross_sales. Of the 1,296 rows with negative profit,
+--          records that deviated from all three formula patterns were first
+--          isolated as Formula Mismatch / Anomaly, while the remaining records
+--          were confirmed as formula-consistent and legitimate loss-making
+--          transactions, eligible for further processing into the Silver Layer.
+
+SELECT
+    CASE
+        WHEN ROUND(net_sales - product_cost - shipping_cost - tax_amount, 2) <> ROUND(profit, 2)
+         AND ROUND(net_sales - product_cost - shipping_cost, 2) <> ROUND(profit, 2)
+         AND ROUND(net_sales - product_cost, 2) <> ROUND(profit, 2) THEN 'Formula Mismatch / Anomaly'
+        WHEN discount_amount > (gross_sales * 0.50) THEN 'Heavy Discount (>50%)'
+        WHEN (net_sales - product_cost) >= 0 AND profit < 0 THEN 'Shipping/Tax Dragged Profit Negative'
+        ELSE 'Near-50% Discount / Valid Margin Compression'
+    END AS loss_driver,
+    COUNT(*) AS total_rows,
+    ROUND(SUM(profit), 2) AS total_profit_impact,
+    ROUND(MIN(profit), 2) AS worst_profit,
+    ROUND(AVG(profit), 2) AS avg_profit,
+    ROUND(AVG(discount_amount) * 100, 2) AS avg_discount_amt
+FROM bronze_sales_transaction
+WHERE profit < 0
+GROUP BY loss_driver
+ORDER BY total_rows DESC;
