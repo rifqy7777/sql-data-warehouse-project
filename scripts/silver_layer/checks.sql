@@ -18,6 +18,7 @@
 -- Purpose     : Ensure every customer record is uniquely identifiable.
 -- Scope       : Rows where customer_id is NULL, empty string, has leading/trailing
 --               spaces, or total_rows is greater than 1.
+-- Status      : Clean
 -- ----------------------------------------------------------------------------
 
 SELECT
@@ -43,7 +44,10 @@ HAVING customer_id IS NULL
 --               values within the query scope.
 -- Scope       : customer_id, customer_name, and status_cek for empty strings,
 --               leading/trailing spaces, and duplicate occurrences.
+-- Status      : Duplicate customer_name 'Donna Miller' found, but further inspection
+--               confirmed it is only a shared name with distinct customer_id and attributes.
 -- ----------------------------------------------------------------------------
+
 SELECT
     customer_id,
     customer_name,
@@ -59,6 +63,11 @@ HAVING COUNT(DISTINCT customer_id) > 1
     OR TRIM(customer_name) = ''
     OR customer_name <> TRIM(customer_name);
 
+SELECT *
+FROM bronze_customer_master
+WHERE customer_name = 'Donna Miller'
+
+
 -- ----------------------------------------------------------------------------
 -- III. CHECK CATEGORICAL & LOCATION COLUMNS
 --      (gender, segment, city, state, country, region, postal_code)
@@ -69,6 +78,10 @@ HAVING COUNT(DISTINCT customer_id) > 1
 -- Scope       : Distinct values and status_cek for gender, customer_segment,
 --               customer_city, customer_state, customer_country, and region,
 --               plus distinct customer counts per customer_postal_code.
+-- Status      : Numerous duplicate postal codes detected. Further inspection on
+--               customer_postal_code '64012' revealed identical postal codes mapped
+--               to different geographic regions. For downstream customer segmentation,
+--               it is recommended to exclude postal_code and rely on actual geographic fields.
 -- ----------------------------------------------------------------------------
 
 -- a. Gender: check category variations, NULLs, and leading/trailing spaces
@@ -159,6 +172,10 @@ GROUP BY customer_postal_code
 HAVING COUNT(DISTINCT customer_id) > 1
 ORDER BY total_customer DESC, customer_postal_code;
 
+SELECT *
+FROM bronze_customer_master
+WHERE customer_postal_code='64012'
+
 -- ----------------------------------------------------------------------------
 -- IV. CHECK NUMERIC COLUMNS (customer_age & customer_acquisition_cost)
 -- Description : Basic summary statistics and anomaly counts for numeric fields.
@@ -167,7 +184,9 @@ ORDER BY total_customer DESC, customer_postal_code;
 -- Scope       : Min/max values and anomaly counts for customer_age (NULL,
 --               less than 15, or greater than 100) and customer_acquisition_cost
 --               (NULL or less than 0).
+-- Status      : Clean
 -- ----------------------------------------------------------------------------
+    
 SELECT
     MIN(customer_age) AS min_age,
     MAX(customer_age) AS max_age,
@@ -197,7 +216,9 @@ FROM bronze_customer_master;
 -- Description : Check for product_id values that are NULL or duplicated.
 -- Purpose     : Ensure product identifiers are not missing or duplicated.
 -- Scope       : product_id and total_rows that are NULL or have more than 1 row.
+-- Status      : Clean
 -- ----------------------------------------------------------------------------
+
 SELECT
     product_id,
     COUNT(*) AS total_rows
@@ -213,7 +234,9 @@ HAVING product_id IS NULL
 -- Purpose     : Detect inconsistent product names or NULL/whitespace issues.
 -- Scope       : Distinct product name count, concatenated product name list, and
 --               flags for NULLs, empty strings, or leading/trailing spaces.
+-- Status      : Clean
 -- ----------------------------------------------------------------------------
+
 SELECT
     product_id,
     COUNT(DISTINCT product_name) AS distinct_product_names,
@@ -230,6 +253,7 @@ HAVING COUNT(DISTINCT product_name) > 1
 -- Purpose     : Find NULL values, empty strings, or leading/trailing spaces.
 -- Scope       : Distinct values and status_cek for product_category,
 --               product_subcategory, brand, and supplier.
+-- Status      : Clean
 -- ----------------------------------------------------------------------------
 
 -- a. Product Category
@@ -288,7 +312,9 @@ ORDER BY supplier;
 --               and ratings outside the 0 to 5 scale.
 -- Scope       : Min/max values and counts for invalid_unit_price,
 --               invalid_product_cost, cost_higher_than_price, and invalid_rating.
+-- Status      : Clean
 -- ----------------------------------------------------------------------------
+
 SELECT
     MIN(unit_price) AS min_unit_price,
     MAX(unit_price) AS max_unit_price,
@@ -321,6 +347,7 @@ FROM bronze_product_catalog;
 --               contain leading/trailing spaces.
 -- Scope       : order_id, product_id, and status_cek for rows that are not Clean.
 -- ----------------------------------------------------------------------------
+
 SELECT
     order_id,
     product_id,
