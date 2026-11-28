@@ -96,6 +96,7 @@ BEGIN
     TRUNCATE TABLE silver_customer_master;
 
     SELECT '>> Inserting Data Into: silver_customer_master' AS log_msg;
+
     INSERT INTO silver_customer_master (
         customer_id,
         customer_name,
@@ -165,191 +166,192 @@ BEGIN
     TRUNCATE TABLE silver_sales_transaction;
 
     SELECT '>> Inserting Data Into: silver_sales_transaction' AS log_msg;
-
-INSERT INTO silver_sales_transaction (
-    order_id,
-    order_date,
-    order_time,
-    order_status,
-    sales_channel,
-    customer_id,
-    customer_name,
-    customer_age,
-    gender,
-    customer_segment,
-    customer_type,
-    customer_city,
-    customer_state,
-    customer_country,
-    region,
-    customer_postal_code,
-    payment_method,
-    payment_status,
-    currency,
-    shipping_method,
-    warehouse,
-    delivery_days,
-    estimated_delivery_days,
-    delivery_status,
-    return_status,
-    return_reason,
-    customer_rating,
-    review_sentiment,
-    customer_review,
-    marketing_channel,
-    campaign_name,
-    coupon_code,
-    loyalty_points_earned,
-    loyalty_points_redeemed,
-    quantity,
-    gross_sales,
-    discount_amount,
-    tax_amount,
-    shipping_cost,
-    net_sales,
-    product_cost,
-    profit,
-    profit_margin_percentage,
-    customer_lifetime_value,
-    is_repeat_customer,
-    customer_order_count,
-    dq_profit_status,
-    dq_loss_driver,
-    data_load_dt
-)
-WITH cleaned_sales_transaction AS (
-    SELECT
-        TRIM(order_id) AS order_id,
+    TRUNCATE TABLE silver_sales_transaction;
+    
+    INSERT INTO silver_sales_transaction (
+        order_id,
         order_date,
         order_time,
-        TRIM(order_status) AS order_status,
-        TRIM(sales_channel) AS sales_channel,
-        TRIM(customer_id) AS customer_id,
-        TRIM(customer_name) AS customer_name,
+        order_status,
+        sales_channel,
+        customer_id,
+        customer_name,
         customer_age,
-        TRIM(gender) AS gender,
-        TRIM(customer_segment) AS customer_segment,
-        TRIM(customer_type) AS customer_type,
-        TRIM(customer_city) AS customer_city,
-        TRIM(customer_state) AS customer_state,
-        TRIM(customer_country) AS customer_country,
-        TRIM(region) AS region,
-        TRIM(customer_postal_code) AS customer_postal_code,
-        TRIM(payment_method) AS payment_method,
-        TRIM(payment_status) AS payment_status,
-        UPPER(TRIM(currency)) AS currency,
-        TRIM(shipping_method) AS shipping_method,
-        TRIM(warehouse) AS warehouse,
+        gender,
+        customer_segment,
+        customer_type,
+        customer_city,
+        customer_state,
+        customer_country,
+        region,
+        customer_postal_code,
+        payment_method,
+        payment_status,
+        currency,
+        shipping_method,
+        warehouse,
         delivery_days,
         estimated_delivery_days,
-        TRIM(delivery_status) AS delivery_status,
-        NULLIF(TRIM(return_status), '') AS return_status,
-        NULLIF(TRIM(return_reason), '') AS return_reason,
-        ROUND(customer_rating, 1) AS customer_rating,
-        NULLIF(TRIM(review_sentiment), '') AS review_sentiment,
-        NULLIF(TRIM(customer_review), '') AS customer_review,
-        TRIM(marketing_channel) AS marketing_channel,
-        NULLIF(TRIM(campaign_name), '') AS campaign_name,
-        NULLIF(TRIM(coupon_code), '') AS coupon_code,
-        CAST(COALESCE(loyalty_points_earned, 0) AS SIGNED) AS loyalty_points_earned,
-        CAST(COALESCE(loyalty_points_redeemed, 0) AS SIGNED) AS loyalty_points_redeemed,
-        CAST(COALESCE(quantity, 0) AS SIGNED) AS quantity,
-        ROUND(COALESCE(gross_sales, 0), 2) AS gross_sales,
-        ROUND(COALESCE(discount_amount, 0), 2) AS discount_amount,
-        ROUND(COALESCE(tax_amount, 0), 2) AS tax_amount,
-        ROUND(COALESCE(shipping_cost, 0), 2) AS shipping_cost,
-        ROUND(COALESCE(net_sales, 0), 2) AS net_sales,
-        ROUND(COALESCE(product_cost, 0), 2) AS product_cost,
-        ROUND(COALESCE(profit, 0), 2) AS profit,
-        ROUND(COALESCE(profit_margin_percentage, 0), 2) AS profit_margin_percentage,
-        ROUND(COALESCE(customer_lifetime_value, 0), 2) AS customer_lifetime_value,
-        CASE
-            WHEN UPPER(TRIM(CAST(is_repeat_customer AS CHAR)))
-                 IN ('1', 'TRUE', 'YES') THEN 1
-            ELSE 0
-        END AS is_repeat_customer,
-        CAST(COALESCE(customer_order_count, 0) AS SIGNED) AS customer_order_count
-    FROM bronze_sales_transaction
-    WHERE order_id IS NOT NULL
-      AND TRIM(order_id) <> ''
-),
-classified_sales AS (
+        delivery_status,
+        return_status,
+        return_reason,
+        customer_rating,
+        review_sentiment,
+        customer_review,
+        marketing_channel,
+        campaign_name,
+        coupon_code,
+        loyalty_points_earned,
+        loyalty_points_redeemed,
+        quantity,
+        gross_sales,
+        discount_amount,
+        tax_amount,
+        shipping_cost,
+        net_sales,
+        product_cost,
+        profit,
+        profit_margin_percentage,
+        customer_lifetime_value,
+        is_repeat_customer,
+        customer_order_count,
+        dq_profit_status,
+        dq_loss_driver,
+        data_load_dt
+    )
+    WITH cleaned_sales_transaction AS (
+        SELECT
+            TRIM(order_id) AS order_id,
+            order_date,
+            order_time,
+            TRIM(order_status) AS order_status,
+            TRIM(sales_channel) AS sales_channel,
+            TRIM(customer_id) AS customer_id,
+            TRIM(customer_name) AS customer_name,
+            customer_age,
+            TRIM(gender) AS gender,
+            TRIM(customer_segment) AS customer_segment,
+            TRIM(customer_type) AS customer_type,
+            TRIM(customer_city) AS customer_city,
+            TRIM(customer_state) AS customer_state,
+            TRIM(customer_country) AS customer_country,
+            TRIM(region) AS region,
+            TRIM(customer_postal_code) AS customer_postal_code,
+            TRIM(payment_method) AS payment_method,
+            TRIM(payment_status) AS payment_status,
+            UPPER(TRIM(currency)) AS currency,
+            TRIM(shipping_method) AS shipping_method,
+            TRIM(warehouse) AS warehouse,
+            delivery_days,
+            estimated_delivery_days,
+            TRIM(delivery_status) AS delivery_status,
+            NULLIF(TRIM(return_status), '') AS return_status,
+            NULLIF(TRIM(return_reason), '') AS return_reason,
+            ROUND(customer_rating, 1) AS customer_rating,
+            NULLIF(TRIM(review_sentiment), '') AS review_sentiment,
+            NULLIF(TRIM(customer_review), '') AS customer_review,
+            TRIM(marketing_channel) AS marketing_channel,
+            NULLIF(TRIM(campaign_name), '') AS campaign_name,
+            NULLIF(TRIM(coupon_code), '') AS coupon_code,
+            CAST(COALESCE(loyalty_points_earned, 0) AS SIGNED) AS loyalty_points_earned,
+            CAST(COALESCE(loyalty_points_redeemed, 0) AS SIGNED) AS loyalty_points_redeemed,
+            CAST(COALESCE(quantity, 0) AS SIGNED) AS quantity,
+            ROUND(COALESCE(gross_sales, 0), 2) AS gross_sales,
+            ROUND(COALESCE(discount_amount, 0), 2) AS discount_amount,
+            ROUND(COALESCE(tax_amount, 0), 2) AS tax_amount,
+            ROUND(COALESCE(shipping_cost, 0), 2) AS shipping_cost,
+            ROUND(COALESCE(net_sales, 0), 2) AS net_sales,
+            ROUND(COALESCE(product_cost, 0), 2) AS product_cost,
+            ROUND(COALESCE(profit, 0), 2) AS profit,
+            ROUND(COALESCE(profit_margin_percentage, 0), 2) AS profit_margin_percentage,
+            ROUND(COALESCE(customer_lifetime_value, 0), 2) AS customer_lifetime_value,
+            CASE
+                WHEN UPPER(TRIM(CAST(is_repeat_customer AS CHAR)))
+                     IN ('1', 'TRUE', 'YES') THEN 1
+                ELSE 0
+            END AS is_repeat_customer,
+            CAST(COALESCE(customer_order_count, 0) AS SIGNED) AS customer_order_count
+        FROM bronze_sales_transaction
+        WHERE order_id IS NOT NULL
+          AND TRIM(order_id) <> ''
+    ),
+    classified_sales AS (
+        SELECT
+            *,
+            CASE
+                WHEN ROUND(net_sales - product_cost - shipping_cost - tax_amount, 2) <> ROUND(profit, 2)
+                 AND ROUND(net_sales - product_cost - shipping_cost, 2) <> ROUND(profit, 2)
+                 AND ROUND(net_sales - product_cost, 2) <> ROUND(profit, 2)
+                THEN 'FORMULA_ANOMALY'
+                ELSE 'VALID'
+            END AS dq_profit_status
+        FROM cleaned_sales_transaction
+    ),
+    final_sales AS (
+        SELECT
+            *,
+            CASE
+                WHEN profit >= 0
+                    THEN 'Non-Negative Profit'
+                WHEN dq_profit_status = 'FORMULA_ANOMALY'
+                    THEN 'Formula Mismatch / Anomaly'
+                WHEN net_sales - product_cost >= 0 AND profit < 0
+                    THEN 'Shipping/Tax Dragged Profit Negative'
+                ELSE 'Valid Margin Compression'
+            END AS dq_loss_driver
+        FROM classified_sales
+    )
     SELECT
-        *,
-        CASE
-            WHEN ROUND(net_sales - product_cost - shipping_cost - tax_amount, 2) <> ROUND(profit, 2)
-             AND ROUND(net_sales - product_cost - shipping_cost, 2) <> ROUND(profit, 2)
-             AND ROUND(net_sales - product_cost, 2) <> ROUND(profit, 2)
-            THEN 'FORMULA_ANOMALY'
-            ELSE 'VALID'
-        END AS dq_profit_status
-    FROM cleaned_sales_transaction
-),
-final_sales AS (
-    SELECT
-        *,
-        CASE
-            WHEN profit >= 0
-                THEN 'Non-Negative Profit'
-            WHEN dq_profit_status = 'FORMULA_ANOMALY'
-                THEN 'Formula Mismatch / Anomaly'
-            WHEN net_sales - product_cost >= 0 AND profit < 0
-                THEN 'Shipping/Tax Dragged Profit Negative'
-            ELSE 'Valid Margin Compression'
-        END AS dq_loss_driver
-    FROM classified_sales
-)
-SELECT
-    order_id,
-    order_date,
-    order_time,
-    order_status,
-    sales_channel,
-    customer_id,
-    customer_name,
-    customer_age,
-    gender,
-    customer_segment,
-    customer_type,
-    customer_city,
-    customer_state,
-    customer_country,
-    region,
-    customer_postal_code,
-    payment_method,
-    payment_status,
-    currency,
-    shipping_method,
-    warehouse,
-    delivery_days,
-    estimated_delivery_days,
-    delivery_status,
-    return_status,
-    return_reason,
-    customer_rating,
-    review_sentiment,
-    customer_review,
-    marketing_channel,
-    campaign_name,
-    coupon_code,
-    loyalty_points_earned,
-    loyalty_points_redeemed,
-    quantity,
-    gross_sales,
-    discount_amount,
-    tax_amount,
-    shipping_cost,
-    net_sales,
-    product_cost,
-    profit,
-    profit_margin_percentage,
-    customer_lifetime_value,
-    is_repeat_customer,
-    customer_order_count,
-    dq_profit_status,
-    dq_loss_driver,
-    CURRENT_TIMESTAMP
-FROM final_sales;
+        order_id,
+        order_date,
+        order_time,
+        order_status,
+        sales_channel,
+        customer_id,
+        customer_name,
+        customer_age,
+        gender,
+        customer_segment,
+        customer_type,
+        customer_city,
+        customer_state,
+        customer_country,
+        region,
+        customer_postal_code,
+        payment_method,
+        payment_status,
+        currency,
+        shipping_method,
+        warehouse,
+        delivery_days,
+        estimated_delivery_days,
+        delivery_status,
+        return_status,
+        return_reason,
+        customer_rating,
+        review_sentiment,
+        customer_review,
+        marketing_channel,
+        campaign_name,
+        coupon_code,
+        loyalty_points_earned,
+        loyalty_points_redeemed,
+        quantity,
+        gross_sales,
+        discount_amount,
+        tax_amount,
+        shipping_cost,
+        net_sales,
+        product_cost,
+        profit,
+        profit_margin_percentage,
+        customer_lifetime_value,
+        is_repeat_customer,
+        customer_order_count,
+        dq_profit_status,
+        dq_loss_driver,
+        CURRENT_TIMESTAMP
+    FROM final_sales;
 
     SET v_end_time = NOW(6);
     SELECT CONCAT('>> Load Duration: ', TIMESTAMPDIFF(SECOND, v_start_time, v_end_time), ' seconds') AS log_msg;
