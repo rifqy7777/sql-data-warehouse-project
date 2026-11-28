@@ -1,26 +1,25 @@
-USE data_warehouse_ecommerce;
-
 -- ============================================================================
--- TABEL 1: BRONZE_CUSTOMER_MASTER (DATA QUALITY CHECK)
--- Keterangan : Audit kualitas data awal pada tabel master pelanggan.
--- Tujuan     : Mengecek keunikan primary key, nilai NULL/kosong, spasi berlebih,
---              serta kewajaran nilai numerik sebelum masuk ke Silver layer.
--- Dianalisa  :
---   1. Keunikan dan kebersihan primary key (customer_id).
---   2. Kebersihan dan potensi duplikasi nama pelanggan (customer_name).
---   3. Variasi nilai, NULL, string kosong, spasi berlebih, dan sebaran kode pos
---      pada kolom kategorikal & lokasi.
---   4. Rentang nilai minimum/maksimum serta anomali pada umur dan CAC.
+-- TABLE 1: BRONZE_CUSTOMER_MASTER (DATA QUALITY CHECK)
+-- Description : Initial data quality audit on the customer master table.
+-- Purpose     : Check primary key uniqueness, NULL/empty values, leading/trailing
+--               spaces, and numeric plausibility before loading into the Silver layer.
+-- Scope       :
+--   1. Uniqueness and cleanliness of the primary key (customer_id).
+--   2. Cleanliness and potential duplication of customer names (customer_name).
+--   3. Value variations, NULLs, empty strings, extra spaces, and postal code
+--      distribution across categorical and location columns.
+--   4. Min/max ranges and anomalies in age and CAC.
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
--- I. CEK PRIMARY KEY (customer_id)
--- Keterangan : Memeriksa apakah customer_id memiliki nilai NULL, kosong, spasi
---              berlebih, atau muncul lebih dari satu baris.
--- Tujuan     : Memastikan setiap baris pelanggan teridentifikasi secara unik.
--- Dianalisa  : Baris dengan customer_id NULL, string kosong, spasi di awal/akhir,
---              atau total_rows lebih dari 1.
+-- I. CHECK PRIMARY KEY (customer_id)
+-- Description : Inspect customer_id values that are NULL, empty, padded with
+--               spaces, or appear in more than one row.
+-- Purpose     : Ensure every customer record is uniquely identifiable.
+-- Scope       : Rows where customer_id is NULL, empty string, has leading/trailing
+--               spaces, or total_rows is greater than 1.
 -- ----------------------------------------------------------------------------
+
 SELECT
     customer_id,
     CASE
@@ -38,12 +37,12 @@ HAVING customer_id IS NULL
     OR customer_id <> TRIM(customer_id);
 
 -- ----------------------------------------------------------------------------
--- II. CEK NAMA PELANGGAN (customer_name)
--- Keterangan : Memeriksa kondisi teks dan potensi duplikasi pada customer_name.
--- Tujuan     : Mendeteksi nama pelanggan yang kosong, berspasi berlebih, atau
---              berulang/berbeda dalam cakupan kueri.
--- Dianalisa  : customer_id, customer_name, serta status_cek untuk string kosong,
---              spasi di awal/akhir, dan kondisi kemunculan ganda.
+-- II. CHECK CUSTOMER NAME (customer_name)
+-- Description : Inspect text conditions and potential duplicates in customer_name.
+-- Purpose     : Detect blank or padded customer names, or repeated/mismatched
+--               values within the query scope.
+-- Scope       : customer_id, customer_name, and status_cek for empty strings,
+--               leading/trailing spaces, and duplicate occurrences.
 -- ----------------------------------------------------------------------------
 SELECT
     customer_id,
@@ -61,18 +60,18 @@ HAVING COUNT(DISTINCT customer_id) > 1
     OR customer_name <> TRIM(customer_name);
 
 -- ----------------------------------------------------------------------------
--- III. CEK KOLOM KATEGORIKAL & LOKASI
+-- III. CHECK CATEGORICAL & LOCATION COLUMNS
 --      (gender, segment, city, state, country, region, postal_code)
--- Keterangan : Meninjau nilai unik dan kondisi kebersihan teks pada atribut
---              demografi serta alamat pelanggan.
--- Tujuan     : Mengetahui variasi kategori, nilai kosong/NULL, spasi berlebih,
---              dan pemakaian kode pos pada beberapa customer.
--- Dianalisa  : Nilai unik dan status_cek untuk gender, customer_segment,
---              customer_city, customer_state, customer_country, dan region,
---              serta jumlah customer unik per customer_postal_code.
+-- Description : Review distinct values and text cleanliness across customer
+--               demographic and address attributes.
+-- Purpose     : Identify category variations, NULL/empty values, extra spaces,
+--               and postal codes shared across multiple customers.
+-- Scope       : Distinct values and status_cek for gender, customer_segment,
+--               customer_city, customer_state, customer_country, and region,
+--               plus distinct customer counts per customer_postal_code.
 -- ----------------------------------------------------------------------------
 
--- a. Gender: cek variasi kategori, NULL, dan spasi berlebih
+-- a. Gender: check category variations, NULLs, and leading/trailing spaces
 SELECT DISTINCT
     gender,
     CASE
@@ -84,7 +83,7 @@ SELECT DISTINCT
 FROM bronze_customer_master
 ORDER BY gender;
 
--- b. Customer Segment: cek variasi segmen pelanggan, NULL, dan spasi berlebih
+-- b. Customer Segment: check segment variations, NULLs, and leading/trailing spaces
 SELECT DISTINCT
     customer_segment,
     CASE
@@ -96,7 +95,7 @@ SELECT DISTINCT
 FROM bronze_customer_master
 ORDER BY customer_segment;
 
--- c. Customer City: cek nama kota, NULL, dan spasi berlebih
+-- c. Customer City: check city names, NULLs, and leading/trailing spaces
 SELECT DISTINCT
     customer_city,
     CASE
@@ -108,7 +107,7 @@ SELECT DISTINCT
 FROM bronze_customer_master
 ORDER BY customer_city;
 
--- d. Customer State: cek provinsi/negara bagian, NULL, dan spasi berlebih
+-- d. Customer State: check state/province names, NULLs, and leading/trailing spaces
 SELECT DISTINCT
     customer_state,
     CASE
@@ -120,7 +119,7 @@ SELECT DISTINCT
 FROM bronze_customer_master
 ORDER BY customer_state;
 
--- e. Customer Country: cek negara, NULL, dan spasi berlebih
+-- e. Customer Country: check country names, NULLs, and leading/trailing spaces
 SELECT DISTINCT
     customer_country,
     CASE
@@ -132,7 +131,7 @@ SELECT DISTINCT
 FROM bronze_customer_master
 ORDER BY customer_country;
 
--- f. Region: cek wilayah/region, NULL, dan spasi berlebih
+-- f. Region: check region values, NULLs, and leading/trailing spaces
 SELECT DISTINCT
     region,
     CASE
@@ -144,7 +143,7 @@ SELECT DISTINCT
 FROM bronze_customer_master
 ORDER BY region;
 
--- g. Postal_Code: cek NULL, duplicated, dan spasi berlebih
+-- g. Postal_Code: check NULLs, duplicates, and leading/trailing spaces
 SELECT
     customer_postal_code,
     COUNT(DISTINCT customer_id) AS total_customer,
@@ -161,13 +160,13 @@ HAVING COUNT(DISTINCT customer_id) > 1
 ORDER BY total_customer DESC, customer_postal_code;
 
 -- ----------------------------------------------------------------------------
--- IV. CEK KOLOM NUMERIK (customer_age & customer_acquisition_cost)
--- Keterangan : Ringkasan statistik dasar dan penghitungan anomali numerik.
--- Tujuan     : Memastikan nilai umur dan biaya akuisisi pelanggan berada pada
---              rentang yang wajar dan tidak banyak yang NULL/negatif.
--- Dianalisa  : Nilai min/max serta jumlah anomali pada customer_age (NULL,
---              kurang dari 15, atau lebih dari 100) dan customer_acquisition_cost
---              (NULL atau kurang dari 0).
+-- IV. CHECK NUMERIC COLUMNS (customer_age & customer_acquisition_cost)
+-- Description : Basic summary statistics and anomaly counts for numeric fields.
+-- Purpose     : Verify that customer age and acquisition cost fall within
+--               reasonable bounds with minimal NULL or negative values.
+-- Scope       : Min/max values and anomaly counts for customer_age (NULL,
+--               less than 15, or greater than 100) and customer_acquisition_cost
+--               (NULL or less than 0).
 -- ----------------------------------------------------------------------------
 SELECT
     MIN(customer_age) AS min_age,
@@ -178,29 +177,26 @@ SELECT
     SUM(CASE WHEN customer_acquisition_cost IS NULL OR customer_acquisition_cost < 0 THEN 1 ELSE 0 END) AS cac_anomalies
 FROM bronze_customer_master;
 
-
-USE data_warehouse_ecommerce;
-
 -- ============================================================================
--- TABEL 2: BRONZE_PRODUCT_CATALOG (DATA QUALITY CHECK)
--- Keterangan : Audit kualitas data awal pada tabel katalog produk.
--- Tujuan     : Mengecek keunikan product_id, konsistensi nama produk,
---              kebersihan teks kategori, serta kewajaran angka harga, biaya,
---              dan rating sebelum masuk ke Silver layer.
--- Dianalisa  :
---   1. Keunikan dan nilai NULL pada product_id.
---   2. Konsistensi dan kebersihan product_name per product_id.
---   3. Nilai unik dan kebersihan teks pada kategori, subkategori, brand,
---      dan supplier.
---   4. Rentang min/max serta anomali pada unit_price, product_cost, dan
+-- TABLE 2: BRONZE_PRODUCT_CATALOG (DATA QUALITY CHECK)
+-- Description : Initial data quality audit on the product catalog table.
+-- Purpose     : Check product_id uniqueness, product name consistency,
+--               category text cleanliness, and plausibility of price, cost,
+--               and rating values before loading into the Silver layer.
+-- Scope       :
+--   1. Uniqueness and NULL values in product_id.
+--   2. Consistency and cleanliness of product_name per product_id.
+--   3. Distinct values and text cleanliness for category, subcategory, brand,
+--      and supplier.
+--   4. Min/max ranges and anomalies in unit_price, product_cost, and
 --      product_rating.
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
--- I. CEK PRIMARY KEY (product_id)
--- Keterangan : Mengecek product_id yang bernilai NULL atau muncul ganda.
--- Tujuan     : Memastikan identitas produk tidak kosong atau terduplikasi.
--- Dianalisa  : product_id dan total_rows yang NULL atau lebih dari 1 baris.
+-- I. CHECK PRIMARY KEY (product_id)
+-- Description : Check for product_id values that are NULL or duplicated.
+-- Purpose     : Ensure product identifiers are not missing or duplicated.
+-- Scope       : product_id and total_rows that are NULL or have more than 1 row.
 -- ----------------------------------------------------------------------------
 SELECT
     product_id,
@@ -211,12 +207,12 @@ HAVING product_id IS NULL
     OR COUNT(*) > 1;
 
 -- ----------------------------------------------------------------------------
--- II. CEK SATU PRODUCT_ID MEMILIKI LEBIH DARI SATU PRODUCT_NAME
---     (atau spasi/NULL)
--- Keterangan : Memeriksa keseragaman nama produk pada setiap product_id.
--- Tujuan     : Mendeteksi inkonsistensi nama produk atau masalah NULL/spasi.
--- Dianalisa  : Jumlah nama produk unik, gabungan daftar nama produk, serta
---              indikasi NULL, string kosong, atau spasi berlebih.
+-- II. CHECK MULTIPLE PRODUCT NAMES PER PRODUCT_ID
+--     (or spaces/NULLs)
+-- Description : Check name consistency across records for each product_id.
+-- Purpose     : Detect inconsistent product names or NULL/whitespace issues.
+-- Scope       : Distinct product name count, concatenated product name list, and
+--               flags for NULLs, empty strings, or leading/trailing spaces.
 -- ----------------------------------------------------------------------------
 SELECT
     product_id,
@@ -228,12 +224,12 @@ HAVING COUNT(DISTINCT product_name) > 1
     OR SUM(CASE WHEN product_name IS NULL OR TRIM(product_name) = '' OR product_name <> TRIM(product_name) THEN 1 ELSE 0 END) > 0;
 
 -- ----------------------------------------------------------------------------
--- III. CEK KOLOM KATEGORIKAL (category, subcategory, brand, supplier)
--- Keterangan : Mengecek nilai unik serta status kebersihan teks pada atribut
---              klasifikasi produk.
--- Tujuan     : Menemukan nilai NULL, string kosong, atau spasi di awal/akhir.
--- Dianalisa  : Nilai unik dan status_cek untuk product_category,
---              product_subcategory, brand, dan supplier.
+-- III. CHECK CATEGORICAL COLUMNS (category, subcategory, brand, supplier)
+-- Description : Check distinct values and text cleanliness across product
+--               classification attributes.
+-- Purpose     : Find NULL values, empty strings, or leading/trailing spaces.
+-- Scope       : Distinct values and status_cek for product_category,
+--               product_subcategory, brand, and supplier.
 -- ----------------------------------------------------------------------------
 
 -- a. Product Category
@@ -285,13 +281,13 @@ FROM bronze_product_catalog
 ORDER BY supplier;
 
 -- ----------------------------------------------------------------------------
--- IV. CEK KOLOM NUMERIK (unit_price, product_cost, product_rating)
--- Keterangan : Mengecek nilai min/max serta jumlah nilai tidak wajar pada
---              harga jual, biaya pokok produk, dan rating.
--- Tujuan     : Mendeteksi harga/biaya nol atau negatif, biaya melebihi harga,
---              dan rating di luar skala 0 sampai 5.
--- Dianalisa  : Nilai min/max serta jumlah baris invalid_unit_price,
---              invalid_product_cost, cost_higher_than_price, dan invalid_rating.
+-- IV. CHECK NUMERIC COLUMNS (unit_price, product_cost, product_rating)
+-- Description : Check min/max values and anomalous counts for unit price,
+--               product cost, and rating.
+-- Purpose     : Detect zero or negative prices/costs, cost exceeding price,
+--               and ratings outside the 0 to 5 scale.
+-- Scope       : Min/max values and counts for invalid_unit_price,
+--               invalid_product_cost, cost_higher_than_price, and invalid_rating.
 -- ----------------------------------------------------------------------------
 SELECT
     MIN(unit_price) AS min_unit_price,
@@ -306,27 +302,24 @@ SELECT
     SUM(CASE WHEN product_rating IS NULL OR product_rating < 0 OR product_rating > 5 THEN 1 ELSE 0 END) AS invalid_rating
 FROM bronze_product_catalog;
 
-
-USE data_warehouse_ecommerce;
-
 -- ============================================================================
--- TABEL 3: BRONZE_ORDER_ITEMS (DATA QUALITY CHECK)
--- Keterangan : Audit kualitas data awal pada tabel detail item pesanan.
--- Tujuan     : Mengecek kelengkapan kunci order_id & product_id, pasangan
---              kunci ganda, serta rentang dan anomali nilai numerik transaksi.
--- Dianalisa  :
---   1. Kunci order_id dan product_id yang NULL, kosong, atau berspasi.
---   2. Pasangan (order_id, product_id) yang muncul lebih dari satu kali.
---   3. Rentang min/max serta jumlah anomali pada quantity, unit_price,
---      gross_sales, net_sales, dan profit.
+-- TABLE 3: BRONZE_ORDER_ITEMS (DATA QUALITY CHECK)
+-- Description : Initial data quality audit on the order line items table.
+-- Purpose     : Check completeness of order_id & product_id keys, duplicate key
+--               pairs, and ranges/anomalies in numeric transaction fields.
+-- Scope       :
+--   1. order_id and product_id keys that are NULL, empty, or padded with spaces.
+--   2. (order_id, product_id) pairs appearing more than once.
+--   3. Min/max ranges and anomalies in quantity, unit_price, gross_sales,
+--      net_sales, and profit.
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
--- I. CEK KUNCI UTAMA (order_id & product_id) — NULL, KOSONG, DAN SPASI
--- Keterangan : Menyaring baris yang salah satu atau kedua kuncinya bermasalah.
--- Tujuan     : Memastikan relasi order dan produk tidak NULL, kosong, atau
---              mengandung spasi di awal/akhir.
--- Dianalisa  : order_id, product_id, dan status_cek pada baris yang tidak Clean.
+-- I. CHECK PRIMARY KEYS (order_id & product_id) — NULL, EMPTY, AND SPACES
+-- Description : Filter rows where either or both key columns have issues.
+-- Purpose     : Ensure order and product references are not NULL, empty, or
+--               contain leading/trailing spaces.
+-- Scope       : order_id, product_id, and status_cek for rows that are not Clean.
 -- ----------------------------------------------------------------------------
 SELECT
     order_id,
@@ -346,12 +339,13 @@ WHERE order_id IS NULL
     OR product_id <> TRIM(product_id);
 
 -- ----------------------------------------------------------------------------
--- II. CEK PASANGAN (order_id, product_id) YANG GANDA
--- Keterangan : Mengelompokkan berdasarkan kombinasi order_id dan product_id.
--- Tujuan     : Mendeteksi item produk yang sama muncul lebih dari sekali dalam
---              satu order_id yang sama.
--- Dianalisa  : Pasangan (order_id, product_id) dengan total_rows lebih dari 1.
+-- II. CHECK DUPLICATE (order_id, product_id) PAIRS
+-- Description : Group records by the combination of order_id and product_id.
+-- Purpose     : Detect the same product appearing more than once within the
+--               same order_id.
+-- Scope       : (order_id, product_id) pairs with total_rows greater than 1.
 -- ----------------------------------------------------------------------------
+
 SELECT
     order_id,
     product_id,
@@ -362,14 +356,15 @@ HAVING COUNT(*) > 1
 ORDER BY total_rows DESC, order_id, product_id;
 
 -- ----------------------------------------------------------------------------
--- III. CEK KOLOM NUMERIK (quantity, harga, diskon, pajak, ongkir, sales, profit)
--- Keterangan : Melihat batas bawah/atas serta baris dengan nilai tidak wajar.
--- Tujuan     : Mengecek kuantitas/harga tidak valid, gross_sales negatif, dan
---              jumlah baris dengan profit negatif.
--- Dianalisa  : Nilai min/max quantity, unit_price, gross_sales, net_sales,
---              dan profit, serta jumlah invalid_qty, invalid_unit_price,
---              negative_gross_sales, dan negative_profit_rows.
+-- III. CHECK NUMERIC COLUMNS (quantity, price, discount, tax, shipping, sales, profit)
+-- Description : Inspect lower/upper bounds and rows with implausible values.
+-- Purpose     : Check invalid quantity/price, negative gross_sales, and
+--               rows with negative profit.
+-- Scope       : Min/max values for quantity, unit_price, gross_sales, net_sales,
+--               and profit, plus counts for invalid_qty, invalid_unit_price,
+--               negative_gross_sales, and negative_profit_rows.
 -- ----------------------------------------------------------------------------
+
 SELECT
     MIN(quantity) AS min_qty,
     MAX(quantity) AS max_qty,
@@ -386,31 +381,30 @@ SELECT
     SUM(CASE WHEN gross_sales IS NULL OR gross_sales < 0 THEN 1 ELSE 0 END) AS negative_gross_sales,
     SUM(CASE WHEN profit < 0 THEN 1 ELSE 0 END) AS negative_profit_rows
 FROM bronze_order_items;
-
-
-USE data_warehouse_ecommerce;
-
 -- ============================================================================
--- TABEL 4: BRONZE_SALES_TRANSACTION (DATA QUALITY CHECK)
--- Keterangan : Audit kualitas data awal pada tabel transaksi penjualan.
--- Tujuan     : Mengecek keunikan order_id, tanggal/waktu, status & atribut
---              transaksi, kolom pengiriman/retur/kupon/ulasan/loyalitas,
---              serta metrik finansial utama sebelum masuk ke Silver layer.
--- Dianalisa  :
---   1. Keunikan dan kebersihan primary key (order_id).
---   2. Kelengkapan order_date & order_time serta kebersihan/variasi kolom
---      status, channel, pelanggan, lokasi, pembayaran, mata uang, dan kirim.
---   3. Distribusi nilai pada delivery_days, estimated_delivery_days, retur,
---      kupon, rating/ulasan, marketing_channel, poin loyalitas, dan CLV.
---   4. Rentang min/max serta anomali pada kuantitas, penjualan, dan profit.
+-- TABLE 4: BRONZE_SALES_TRANSACTION (DATA QUALITY CHECK)
+-- Description : Initial data quality audit on the sales transaction table.
+-- Purpose     : Check order_id uniqueness, dates/times, transaction status &
+--               attributes, shipping/returns/coupons/reviews/loyalty fields,
+--               and core financial metrics before loading into the Silver layer.
+-- Scope       :
+--   1. Uniqueness and cleanliness of the primary key (order_id).
+--   2. Completeness of order_date & order_time, and cleanliness/variations
+--      across status, channel, customer, location, payment, currency, and
+--      shipping columns.
+--   3. Value distributions for delivery_days, estimated_delivery_days, returns,
+--      coupons, ratings/reviews, marketing_channel, loyalty points, and CLV.
+--   4. Min/max ranges and anomalies in quantity, sales, and profit.
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
--- 1. CEK PRIMARY KEY (order_id)
--- Keterangan : Memeriksa order_id yang NULL, kosong, berspasi, atau ganda.
--- Tujuan     : Memastikan setiap order_id unik dan valid.
--- Dianalisa  : order_id, status_check, dan total_rows yang memenuhi syarat HAVING.
+-- 1. CHECK PRIMARY KEY (order_id)
+-- Description : Inspect order_id values that are NULL, empty, padded with
+--               spaces, or duplicated.
+-- Purpose     : Ensure every order_id is unique and valid.
+-- Scope       : order_id, status_check, and total_rows matching the HAVING clause.
 -- ----------------------------------------------------------------------------
+
 SELECT
     order_id,
     CASE
@@ -428,18 +422,18 @@ HAVING order_id IS NULL
     OR order_id <> TRIM(order_id);
 
 -- ----------------------------------------------------------------------------
--- 2. CEK TANGGAL, WAKTU, & STATUS TRANSAKSI / PEMBAYARAN / MATA UANG
--- Keterangan : Memeriksa kelengkapan tanggal/waktu dan kebersihan/variasi
---              nilai pada berbagai kolom dimensi transaksi.
--- Tujuan     : Mendeteksi nilai NULL, string kosong, spasi berlebih, atau
---              ketidaksesuaian huruf kapital pada kolom tertentu.
--- Dianalisa  :
---   a. Jumlah order_date dan order_time yang NULL atau kosong.
---   b-g. Nilai dan status_check pada order_status, sales_channel, customer_id,
+-- 2. CHECK DATE, TIME, & TRANSACTION / PAYMENT / CURRENCY STATUS
+-- Description : Check completeness of date/time fields and cleanliness/value
+--               variations across transaction dimension columns.
+-- Purpose     : Detect NULLs, empty strings, extra spaces, or casing issues
+--               in designated columns.
+-- Scope       :
+--   a. Count of NULL or empty order_date and order_time values.
+--   b-g. Values and status_check for order_status, sales_channel, customer_id,
 --        customer_name, gender, customer_segment, customer_city, customer_state,
---        customer_country, region, serta customer_postal_code.
---   h-k. Nilai unik dan status_cek pada payment_method, payment_status,
---        currency, dan shipping_method.
+--        customer_country, region, and customer_postal_code.
+--   h-k. Distinct values and status_cek for payment_method, payment_status,
+--        currency, and shipping_method.
 -- ----------------------------------------------------------------------------
 
 -- a. order_date & order_time
@@ -504,7 +498,7 @@ GROUP BY
     order_id, customer_name, status_check
 ORDER BY total_transaksi DESC;
 
--- f.1 Gender: cek variasi kategori, NULL, dan spasi berlebih
+-- f.1 Gender: check category variations, NULLs, and leading/trailing spaces
 SELECT DISTINCT
     gender,
     CASE
@@ -516,7 +510,7 @@ SELECT DISTINCT
 FROM bronze_sales_transaction
 ORDER BY gender;
 
--- f.2 Customer Segment: cek variasi segmen pelanggan, NULL, dan spasi berlebih
+-- f.2 Customer Segment: check segment variations, NULLs, and leading/trailing spaces
 SELECT DISTINCT
     customer_segment,
     CASE
@@ -528,7 +522,7 @@ SELECT DISTINCT
 FROM bronze_sales_transaction
 ORDER BY customer_segment;
 
--- f.3 Customer City: cek nama kota, NULL, dan spasi berlebih
+-- f.3 Customer City: check city names, NULLs, and leading/trailing spaces
 SELECT DISTINCT
     customer_city,
     CASE
@@ -540,7 +534,7 @@ SELECT DISTINCT
 FROM bronze_sales_transaction
 ORDER BY customer_city;
 
--- f.4 Customer State: cek provinsi/negara bagian, NULL, dan spasi berlebih
+-- f.4 Customer State: check state/province names, NULLs, and leading/trailing spaces
 SELECT DISTINCT
     customer_state,
     CASE
@@ -552,7 +546,7 @@ SELECT DISTINCT
 FROM bronze_sales_transaction
 ORDER BY customer_state;
 
--- f.5 Customer Country: cek negara, NULL, dan spasi berlebih
+-- f.5 Customer Country: check country names, NULLs, and leading/trailing spaces
 SELECT DISTINCT
     customer_country,
     CASE
@@ -564,7 +558,7 @@ SELECT DISTINCT
 FROM bronze_sales_transaction
 ORDER BY customer_country;
 
--- f.6 Region: cek wilayah/region, NULL, dan spasi berlebih
+-- f.6 Region: check region values, NULLs, and leading/trailing spaces
 SELECT DISTINCT
     region,
     CASE
@@ -576,7 +570,7 @@ SELECT DISTINCT
 FROM bronze_sales_transaction
 ORDER BY region;
 
--- g. Postal_Code: cek NULL, duplicated, dan spasi berlebih
+-- g. Postal_Code: check NULLs, duplicates, and leading/trailing spaces
 SELECT
     customer_postal_code,
     COUNT(DISTINCT customer_id) AS total_customer,
@@ -643,21 +637,22 @@ FROM bronze_sales_transaction
 ORDER BY shipping_method;
 
 -- ----------------------------------------------------------------------------
--- 3. CEK KOLOM KONTEKSTUAL & PENDUKUNG
+-- 3. CHECK CONTEXTUAL & SUPPORTING COLUMNS
 --    (delivery_days, estimated_delivery_days, return, coupon, review,
 --     marketing_channel, loyalty_points, clv)
--- Keterangan : Meninjau distribusi jumlah baris dan kondisi nilai pada kolom
---              pengiriman, retur, kupon, ulasan, pemasaran, serta loyalitas.
--- Tujuan     : Memahami pola nilai kosong/NULL yang wajar maupun mendeteksi
---              nilai negatif/anomali pada metrik pendukung.
--- Dianalisa  :
---   - Jumlah baris per nilai pada delivery_days, estimated_delivery_days,
+-- Description : Review row distributions and value conditions across shipping,
+--               returns, coupons, reviews, marketing, and loyalty columns.
+-- Purpose     : Understand expected NULL/empty patterns and detect negative
+--               values or anomalies in supporting metrics.
+-- Scope       :
+--   - Row counts per value for delivery_days, estimated_delivery_days,
 --     return_status, return_reason, coupon_code, customer_rating,
---     review_sentiment, dan customer_review.
---   - Nilai unik dan status_cek pada marketing_channel.
---   - Kombinasi nilai negatif pada loyalty_points_earned & redeemed serta
+--     review_sentiment, and customer_review.
+--   - Distinct values and status_cek for marketing_channel.
+--   - Negative value combinations in loyalty_points_earned & redeemed, and
 --     customer_lifetime_value, is_repeat_customer, & customer_order_count.
 -- ----------------------------------------------------------------------------
+
 SELECT
     delivery_days,
     COUNT(*) AS total_rows
@@ -745,14 +740,16 @@ GROUP BY customer_lifetime_value
 ORDER BY total_rows DESC;
 
 -- ----------------------------------------------------------------------------
--- 4. CEK KOLOM NUMERIK UTAMA (quantity, gross_sales, net_sales, profit, margin)
--- Keterangan : Ringkasan rentang nilai dan anomali finansial utama transaksi.
--- Tujuan     : Memastikan nilai kuantitas, penjualan kotor/bersih, profit, dan
---              margin berada dalam rentang yang dapat diproses.
--- Dianalisa  : Nilai min/max quantity, gross_sales, net_sales, profit, dan
---              profit_margin_percentage, serta jumlah invalid_qty dan
---              negative_profit_rows.
+-- 4. CHECK CORE NUMERIC COLUMNS (quantity, gross_sales, net_sales, profit, margin)
+-- Description : Summary of value ranges and primary financial anomalies in
+--               transactions.
+-- Purpose     : Ensure quantity, gross/net sales, profit, and margin fall
+--               within processable ranges.
+-- Scope       : Min/max values for quantity, gross_sales, net_sales, profit, and
+--               profit_margin_percentage, plus counts for invalid_qty and
+--               negative_profit_rows.
 -- ----------------------------------------------------------------------------
+
 SELECT
     MIN(quantity) AS min_qty,
     MAX(quantity) AS max_qty,
