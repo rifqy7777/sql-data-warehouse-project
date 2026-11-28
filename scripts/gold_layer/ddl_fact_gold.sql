@@ -1,14 +1,3 @@
--- Jalankan sekali saja jika kolom-kolom di bawah belum di-index di Silver layer
-ALTER TABLE silver_sales_transaction
-    ADD INDEX idx_sst_order_id (order_id),
-    ADD INDEX idx_sst_customer_id (customer_id);
-
-ALTER TABLE silver_order_items
-    ADD INDEX idx_soi_order_id (order_id),
-    ADD INDEX idx_soi_product_id (product_id);
-
-USE data_warehouse_ecommerce;
-
 -- ============================================================================
 -- 1. FACT_ORDERS (Granularitas: 1 baris per order_id -> 138.116 baris)
 -- ============================================================================
@@ -35,6 +24,10 @@ CREATE TABLE fact_orders (
     profit                   DECIMAL(12, 2) NOT NULL,
     profit_margin_percentage DECIMAL(6, 2)  NOT NULL,
 
+    -- Flag Kualitas Data Finansial (dari Silver)
+    dq_profit_status         VARCHAR(20)    NOT NULL,
+    dq_loss_driver           VARCHAR(40)    NOT NULL,
+
     -- Metrik SLA Logistik, Loyalitas & Ulasan
     delivery_days            DECIMAL(5, 1)  NULL,
     estimated_delivery_days  DECIMAL(5, 1)  NULL,
@@ -51,7 +44,8 @@ CREATE TABLE fact_orders (
     INDEX idx_fo_time (time_key),
     INDEX idx_fo_logistics (logistics_key),
     INDEX idx_fo_channel_payment (channel_payment_key),
-    INDEX idx_fo_promo (promo_key)
+    INDEX idx_fo_promo (promo_key),
+    INDEX idx_fo_dq_profit_status (dq_profit_status)
 );
 
 TRUNCATE TABLE fact_orders;
@@ -74,6 +68,8 @@ INSERT INTO fact_orders (
     product_cost,
     profit,
     profit_margin_percentage,
+    dq_profit_status,
+    dq_loss_driver,
     delivery_days,
     estimated_delivery_days,
     loyalty_points_earned,
@@ -101,6 +97,8 @@ SELECT
     st.product_cost,
     st.profit,
     st.profit_margin_percentage,
+    st.dq_profit_status,
+    st.dq_loss_driver,
     NULLIF(CAST(st.delivery_days AS CHAR), '')           AS delivery_days,
     NULLIF(CAST(st.estimated_delivery_days AS CHAR), '') AS estimated_delivery_days,
     COALESCE(st.loyalty_points_earned, 0)                AS loyalty_points_earned,
@@ -141,11 +139,12 @@ CREATE TABLE fact_order_items (
     customer_key        INT UNSIGNED   NOT NULL,
     date_key            INT UNSIGNED   NOT NULL,
     promo_key           INT UNSIGNED   NOT NULL,
+    line_item_seq       INT UNSIGNED   NOT NULL DEFAULT 1,
 
     -- Metrik Rinci per Line-Item Produk
     quantity            INT UNSIGNED   NOT NULL,
     unit_price          DECIMAL(12, 2) NOT NULL,
-    discount_percentage DECIMAL(6, 4)  NOT NULL,
+    discount_percentage DECIMAL(8, 6)  NOT NULL,
     discount_amount     DECIMAL(12, 2) NOT NULL,
     gross_sales         DECIMAL(12, 2) NOT NULL,
     tax_amount          DECIMAL(12, 2) NOT NULL,
@@ -153,15 +152,21 @@ CREATE TABLE fact_order_items (
     net_sales           DECIMAL(12, 2) NOT NULL,
     product_cost        DECIMAL(12, 2) NOT NULL,
     profit              DECIMAL(12, 2) NOT NULL,
+
+    -- Flag Kualitas Data Finansial (dari Silver)
+    dq_profit_status    VARCHAR(20)    NOT NULL,
+    dq_loss_driver      VARCHAR(40)    NOT NULL,
+
     data_load_dt        DATETIME       DEFAULT CURRENT_TIMESTAMP,
 
     PRIMARY KEY (order_item_key),
-    UNIQUE KEY uq_order_product (order_id, product_key),
+    UNIQUE KEY uq_order_product_seq (order_id, product_key, line_item_seq),
     INDEX idx_foi_order (order_id),
     INDEX idx_foi_product (product_key),
     INDEX idx_foi_customer (customer_key),
     INDEX idx_foi_date (date_key),
-    INDEX idx_foi_promo (promo_key)
+    INDEX idx_foi_promo (promo_key),
+    INDEX idx_foi_dq_profit_status (dq_profit_status)
 );
 
 TRUNCATE TABLE fact_order_items;
@@ -172,6 +177,7 @@ INSERT INTO fact_order_items (
     customer_key,
     date_key,
     promo_key,
+    line_item_seq,
     quantity,
     unit_price,
     discount_percentage,
@@ -182,51 +188,35 @@ INSERT INTO fact_order_items (
     net_sales,
     product_cost,
     profit,
+    dq_profit_status,
+    dq_loss_driver,
     data_load_dt
 )
-WITH clean_items AS (
-    SELECT
-        order_id,
-        product_id,
-        quantity,
-        unit_price,
-        discount_percentage,
-        discount_amount,
-        gross_sales,
-        tax_amount,
-        shipping_cost,
-        net_sales,
-        product_cost,
-        profit,
-        ROW_NUMBER() OVER (
-            PARTITION BY order_id, product_id
-            ORDER BY gross_sales DESC
-        ) AS rn
-    FROM silver_order_items
-)
 SELECT
-    ci.order_id,
+    soi.order_id,
     dp.product_key,
     fo.customer_key,
     fo.date_key,
     fo.promo_key,
-    ci.quantity,
-    ci.unit_price,
-    ci.discount_percentage,
-    ci.discount_amount,
-    ci.gross_sales,
-    ci.tax_amount,
-    ci.shipping_cost,
-    ci.net_sales,
-    ci.product_cost,
-    ci.profit,
+    soi.line_item_seq,
+    soi.quantity,
+    soi.unit_price,
+    soi.discount_percentage,
+    soi.discount_amount,
+    soi.gross_sales,
+    soi.tax_amount,
+    soi.shipping_cost,
+    soi.net_sales,
+    soi.product_cost,
+    soi.profit,
+    soi.dq_profit_status,
+    soi.dq_loss_driver,
     CURRENT_TIMESTAMP AS data_load_dt
-FROM clean_items ci
+FROM silver_order_items soi
 JOIN dim_erp_product_info dp
-    ON ci.product_id = dp.product_id
+    ON soi.product_id = dp.product_id
 JOIN fact_orders fo
-    ON ci.order_id = fo.order_id
-WHERE ci.rn = 1;
+    ON soi.order_id = fo.order_id;
 
 SELECT 'dim_crm_customer_info'   AS table_name, COUNT(*) AS total_rows FROM dim_crm_customer_info   -- Target: 25.000
 UNION ALL
