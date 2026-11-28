@@ -581,6 +581,7 @@ FROM bronze_order_items
 WHERE profit < 0
 GROUP BY loss_driver
 ORDER BY total_rows DESC;
+
 -- ============================================================================
 -- TABLE 4: BRONZE_SALES_TRANSACTION (DATA QUALITY CHECK)
 -- Description : Initial data quality audit on the sales transaction table.
