@@ -1,30 +1,12 @@
 USE data_warehouse_ecommerce;
 
 -- ============================================================================
--- 1. SILVER PRODUCT CATALOG (DDL)
--- ============================================================================
-DROP TABLE IF EXISTS silver_product_catalog;
-
-CREATE TABLE silver_product_catalog (
-    product_id          VARCHAR(20),
-    product_name        VARCHAR(120),
-    product_category    VARCHAR(50),
-    product_subcategory VARCHAR(50),
-    brand               VARCHAR(50),
-    supplier            VARCHAR(50),
-    unit_price          DECIMAL(12, 2),
-    product_cost        DECIMAL(12, 2),
-    product_rating      DECIMAL(3, 1),
-    data_load_dt        DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
--- ============================================================================
--- 2. SILVER CUSTOMER MASTER (DDL)
+-- 1. SILVER CUSTOMER MASTER (DDL)
 -- ============================================================================
 DROP TABLE IF EXISTS silver_customer_master;
 
 CREATE TABLE silver_customer_master (
-    customer_id               VARCHAR(20),
+    customer_id               VARCHAR(20) NOT NULL,
     customer_name             VARCHAR(100),
     customer_age              INT,
     gender                    VARCHAR(20),
@@ -35,7 +17,27 @@ CREATE TABLE silver_customer_master (
     region                    VARCHAR(20),
     customer_postal_code      VARCHAR(20),
     customer_acquisition_cost DECIMAL(12, 2),
-    data_load_dt              DATETIME DEFAULT CURRENT_TIMESTAMP
+    data_load_dt              DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (customer_id)
+);
+
+-- ============================================================================
+-- 2. SILVER PRODUCT CATALOG (DDL)
+-- ============================================================================
+DROP TABLE IF EXISTS silver_product_catalog;
+
+CREATE TABLE silver_product_catalog (
+    product_id          VARCHAR(20) NOT NULL,
+    product_name        VARCHAR(120),
+    product_category    VARCHAR(50),
+    product_subcategory VARCHAR(50),
+    brand               VARCHAR(50),
+    supplier            VARCHAR(50),
+    unit_price          DECIMAL(12, 2),
+    product_cost        DECIMAL(12, 2),
+    product_rating      DECIMAL(3, 1),
+    data_load_dt        DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (product_id)
 );
 
 -- ============================================================================
@@ -45,7 +47,8 @@ DROP TABLE IF EXISTS silver_sales_transaction;
 
 CREATE TABLE silver_sales_transaction (
     -- 1. Order & Waktu
-    order_id                  VARCHAR(20),
+    order_id                  VARCHAR(20) NOT NULL,
+    product_id                VARCHAR(20) NOT NULL,
     order_date                DATE,
     order_time                TIME,
     order_status              VARCHAR(20),
@@ -101,7 +104,9 @@ CREATE TABLE silver_sales_transaction (
     customer_order_count      INT,
 
     -- 6. Metadata
-    data_load_dt              DATETIME DEFAULT CURRENT_TIMESTAMP
+    data_load_dt              DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (order_id, product_id)
 );
 
 -- ============================================================================
@@ -110,7 +115,7 @@ CREATE TABLE silver_sales_transaction (
 DROP TABLE IF EXISTS silver_order_items;
 
 CREATE TABLE silver_order_items (
-    order_id            VARCHAR(20),
+    order_id            VARCHAR(20) NOT NULL,
     product_id          VARCHAR(20),
     quantity            INT,
     unit_price          DECIMAL(12, 2),
@@ -122,5 +127,6 @@ CREATE TABLE silver_order_items (
     net_sales           DECIMAL(12, 2),
     product_cost        DECIMAL(12, 2),
     profit              DECIMAL(12, 2),
-    data_load_dt        DATETIME DEFAULT CURRENT_TIMESTAMP
+    data_load_dt        DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (order_id)
 );
