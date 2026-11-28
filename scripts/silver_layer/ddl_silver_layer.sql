@@ -41,7 +41,32 @@ CREATE TABLE silver_product_catalog (
 );
 
 -- ============================================================================
--- 3. SILVER SALES TRANSACTION (DDL)
+-- 3. SILVER ORDER ITEMS (DDL)
+-- ============================================================================
+DROP TABLE IF EXISTS silver_order_items;
+CREATE TABLE silver_order_items (
+    order_id            VARCHAR(20) NOT NULL,
+    product_id          VARCHAR(20) NOT NULL,
+    line_item_seq       INT NOT NULL,
+    quantity            INT,
+    unit_price          DECIMAL(12, 2),
+    discount_percentage DECIMAL(10, 6),
+    discount_amount     DECIMAL(12, 2),
+    gross_sales         DECIMAL(12, 2),
+    tax_amount          DECIMAL(12, 2),
+    shipping_cost       DECIMAL(12, 2),
+    net_sales           DECIMAL(12, 2),
+    product_cost        DECIMAL(12, 2),
+    profit              DECIMAL(12, 2),
+    dq_profit_status    VARCHAR(20),
+    dq_loss_driver      VARCHAR(60),
+    data_load_dt        DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (order_id, product_id, line_item_seq)
+);
+
+
+-- ============================================================================
+-- 4. SILVER SALES TRANSACTION (DDL)
 -- ============================================================================
 DROP TABLE IF EXISTS silver_sales_transaction;
 
@@ -109,24 +134,3 @@ CREATE TABLE silver_sales_transaction (
     PRIMARY KEY (order_id, product_id)
 );
 
--- ============================================================================
--- 4. SILVER ORDER ITEMS (DDL)
--- ============================================================================
-DROP TABLE IF EXISTS silver_order_items;
-
-CREATE TABLE silver_order_items (
-    order_id            VARCHAR(20) NOT NULL,
-    product_id          VARCHAR(20),
-    quantity            INT,
-    unit_price          DECIMAL(12, 2),
-    discount_percentage DECIMAL(10, 6),
-    discount_amount     DECIMAL(12, 2),
-    gross_sales         DECIMAL(12, 2),
-    tax_amount          DECIMAL(12, 2),
-    shipping_cost       DECIMAL(12, 2),
-    net_sales           DECIMAL(12, 2),
-    product_cost        DECIMAL(12, 2),
-    profit              DECIMAL(12, 2),
-    data_load_dt        DATETIME DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (order_id)
-);
