@@ -1,7 +1,14 @@
 USE data_warehouse_ecommerce;
 
+-- Drop child table first to avoid foreign key constraint conflicts during rebuilds.
+DROP TABLE IF EXISTS silver_order_items;
+
 -- ============================================================================
--- 1. SILVER CUSTOMER MASTER (DDL)
+-- Table     : silver_customer_master
+-- Objective : Define the Silver layer customer master table with a unique
+--             customer identifier and load timestamp metadata.
+-- Changes   : Added data_load_dt column with default CURRENT_TIMESTAMP and
+--             set PRIMARY KEY on customer_id.
 -- ============================================================================
 DROP TABLE IF EXISTS silver_customer_master;
 
@@ -22,7 +29,11 @@ CREATE TABLE silver_customer_master (
 );
 
 -- ============================================================================
--- 2. SILVER PRODUCT CATALOG (DDL)
+-- Table     : silver_product_catalog
+-- Objective : Define the Silver layer product catalog table with standardized
+--             pricing, cost, and rating types plus load timestamp metadata.
+-- Changes   : Added data_load_dt column with default CURRENT_TIMESTAMP and
+--             set PRIMARY KEY on product_id.
 -- ============================================================================
 DROP TABLE IF EXISTS silver_product_catalog;
 
@@ -41,7 +52,13 @@ CREATE TABLE silver_product_catalog (
 );
 
 -- ============================================================================
--- 3. SILVER SALES TRANSACTION (DDL)
+-- Table     : silver_sales_transaction
+-- Objective : Define the Silver layer sales transaction table with order,
+--             customer, shipping, financial measures, and profit DQ columns.
+-- Changes   : Fixed PRIMARY KEY to order_id (matching existing columns and
+--             supporting order_id foreign key references), aligned FK name to
+--             silver_customer_master, and added dq_profit_status,
+--             dq_loss_driver, and data_load_dt columns.
 -- ============================================================================
 DROP TABLE IF EXISTS silver_sales_transaction;
 
@@ -57,7 +74,7 @@ CREATE TABLE silver_sales_transaction (
     customer_id               VARCHAR(20),
     customer_name             VARCHAR(100),
     customer_age              INT,
-    gender                    VARCHAR(20), 
+    gender                    VARCHAR(20),
     customer_segment          VARCHAR(20),
     customer_type             VARCHAR(20),
     customer_city             VARCHAR(50),
@@ -107,15 +124,21 @@ CREATE TABLE silver_sales_transaction (
     dq_loss_driver            VARCHAR(60),
     data_load_dt              DATETIME DEFAULT CURRENT_TIMESTAMP,
 
-    PRIMARY KEY (order_id, product_id, line_item_seq),
-	CONSTRAINT fk_ci_customer_master
+    PRIMARY KEY (order_id),
+    CONSTRAINT fk_st_customer_master
         FOREIGN KEY (customer_id) REFERENCES silver_customer_master (customer_id)
 );
 
 -- ============================================================================
--- 4. SILVER ORDER ITEMS (DDL)
+-- Table     : silver_order_items
+-- Objective : Define the Silver layer order line-item table with sequence
+--             numbering, financial measures, and profit DQ columns.
+-- Changes   : Kept composite PRIMARY KEY (order_id, product_id, line_item_seq),
+--             renamed foreign key constraints to match referenced tables
+--             (silver_sales_transaction and silver_product_catalog), and
+--             added dq_profit_status, dq_loss_driver, and data_load_dt
+--             columns.
 -- ============================================================================
-DROP TABLE IF EXISTS silver_order_items;
 CREATE TABLE silver_order_items (
     order_id            VARCHAR(20) NOT NULL,
     product_id          VARCHAR(20) NOT NULL,
@@ -134,8 +157,8 @@ CREATE TABLE silver_order_items (
     dq_loss_driver      VARCHAR(60),
     data_load_dt        DATETIME DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (order_id, product_id, line_item_seq),
-    CONSTRAINT fk_oi_customer_master
+    CONSTRAINT fk_oi_sales_transaction
         FOREIGN KEY (order_id) REFERENCES silver_sales_transaction (order_id),
-    CONSTRAINT fk_pi_customer_master
+    CONSTRAINT fk_oi_product_catalog
         FOREIGN KEY (product_id) REFERENCES silver_product_catalog (product_id)
 );
