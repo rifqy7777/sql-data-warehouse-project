@@ -139,6 +139,7 @@ CREATE TABLE silver_sales_transaction (
 --             added dq_profit_status, dq_loss_driver, and data_load_dt
 --             columns.
 -- ============================================================================
+DROP TABLE IF EXISTS silver_order_items;
 CREATE TABLE silver_order_items (
     order_id            VARCHAR(20) NOT NULL,
     product_id          VARCHAR(20) NOT NULL,
