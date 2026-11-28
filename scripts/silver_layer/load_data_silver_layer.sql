@@ -22,12 +22,13 @@ BEGIN
     SELECT '================================================' AS log_msg;
 
     -- ========================================================================
-    -- TABEL 1: SILVER_PRODUCT_CATALOG
-    -- Keterangan : Memindahkan data katalog produk dari Bronze ke Silver layer.
-    -- Kenapa Silver layer: Merapikan spasi teks, menyeragamkan pembulatan angka
-    --              harga/biaya/rating, menyaring product_id kosong, serta
-    --              melakukan deduplikasi per product_id agar katalog bersih dan
-    --              konsisten sebelum dipakai di tahap analisis/Gold.
+    -- Table     : silver_product_catalog
+    -- Objective : Load product catalog data from Bronze to Silver layer in a
+    --             clean, standardized state for downstream analysis/Gold.
+    -- Changes   : Trimmed text whitespace (TRIM), filtered out blank/NULL
+    --             product_id values, standardized rounding on price, cost,
+    --             and rating (COALESCE & ROUND), deduplicated per product_id
+    --             (ROW_NUMBER), and added the data_load_dt column.
     -- ========================================================================
     SET v_start_time = NOW(6);
     SELECT '>> Truncating Table: silver_product_catalog' AS log_msg;
@@ -84,19 +85,19 @@ BEGIN
     SELECT '>> -------------' AS log_msg;
 
     -- ========================================================================
-    -- TABEL 2: SILVER_CUSTOMER_MASTER
-    -- Keterangan : Memindahkan data master pelanggan dari Bronze ke Silver layer.
-    -- Kenapa Silver layer: Membersihkan spasi berlebih pada atribut teks dan
-    --              kode pos, membuang customer_id kosong/NULL, serta menjaga
-    --              keunikan per customer_id tanpa menghapus entitas yang kebetulan
-    --              bernama sama atau memaksakan aturan Gold terlalu dini.
+    -- Table     : silver_customer_master
+    -- Objective : Load customer master data from Bronze to Silver layer while
+    --             preserving entity uniqueness per customer_id.
+    -- Changes   : Trimmed extra whitespace on text attributes and postal codes
+    --             (TRIM), filtered out blank/NULL customer_id values,
+    --             deduplicated per customer_id (ROW_NUMBER), and added the
+    --             data_load_dt column.
     -- ========================================================================
     SET v_start_time = NOW(6);
     SELECT '>> Truncating Table: silver_customer_master' AS log_msg;
     TRUNCATE TABLE silver_customer_master;
 
     SELECT '>> Inserting Data Into: silver_customer_master' AS log_msg;
-
     INSERT INTO silver_customer_master (
         customer_id,
         customer_name,
@@ -153,21 +154,20 @@ BEGIN
     SELECT '>> -------------' AS log_msg;
 
     -- ========================================================================
-    -- TABEL 3: SILVER_SALES_TRANSACTION
-    -- Keterangan : Memindahkan data transaksi penjualan dari Bronze ke Silver layer.
-    -- Kenapa Silver layer: Menstandarkan spasi, kapitalisasi currency, tipe
-    --              numerik/boolean (is_repeat_customer), serta mengubah string
-    --              kosong menjadi NULL pada kolom kondisional (retur, kupon,
-    --              kampanye, ulasan) sambil mempertahankan nilai NULL vs 0 asli
-    --              (seperti pada delivery_days/order batal) agar makna data jujur.
+    -- Table     : silver_sales_transaction
+    -- Objective : Load sales transaction data from Bronze to Silver layer with
+    --             standardized data types and profit data quality checks.
+    -- Changes   : Filtered out blank/NULL order_id values, trimmed text and
+    --             uppercased currency codes, converted empty strings to NULL on
+    --             optional fields, standardized numeric/boolean types
+    --             (is_repeat_customer), and added data_load_dt,
+    --             dq_profit_status, and dq_loss_driver columns.
     -- ========================================================================
     SET v_start_time = NOW(6);
     SELECT '>> Truncating Table: silver_sales_transaction' AS log_msg;
     TRUNCATE TABLE silver_sales_transaction;
 
     SELECT '>> Inserting Data Into: silver_sales_transaction' AS log_msg;
-    TRUNCATE TABLE silver_sales_transaction;
-    
     INSERT INTO silver_sales_transaction (
         order_id,
         order_date,
@@ -358,12 +358,14 @@ BEGIN
     SELECT '>> -------------' AS log_msg;
 
     -- ========================================================================
-    -- TABEL 4: SILVER_ORDERS_ITEMS
-    -- Keterangan : Memindahkan data detail item pesanan dari Bronze ke Silver.
-    -- Kenapa Silver layer: Memastikan order_id dan product_id terisi serta bebas
-    --              spasi, merapikan tipe integer dan pembulatan desimal pada
-    --              harga, diskon, penjualan, biaya, dan profit, sekaligus
-    --              menambahkan waktu muat (data_load_dt) untuk keterlacakan ETL.
+    -- Table     : silver_order_items
+    -- Objective : Load order line-item data from Bronze to Silver layer with
+    --             item sequencing, numeric rounding, and profit DQ flags.
+    -- Changes   : Filtered out blank/NULL order_id and product_id values,
+    --             generated line_item_seq (ROW_NUMBER), standardized integer
+    --             types and decimal rounding on price, discount, cost, and
+    --             profit, and added data_load_dt, dq_profit_status, and
+    --             dq_loss_driver columns.
     -- ========================================================================
     SET v_start_time = NOW(6);
     SELECT '>> Truncating Table: silver_order_items' AS log_msg;
@@ -385,26 +387,41 @@ BEGIN
         product_cost,
         profit,
         dq_profit_status,
-        dq_loss_driver
+        dq_loss_driver,
+        data_load_dt
     )
     WITH cleaned_order_items AS (
         SELECT
-            order_id,
-            product_id,
+            TRIM(order_id) AS order_id,
+            TRIM(product_id) AS product_id,
             ROW_NUMBER() OVER (
-                PARTITION BY order_id, product_id
-                ORDER BY quantity, unit_price, gross_sales, net_sales, profit
+                PARTITION BY TRIM(order_id), TRIM(product_id)
+                ORDER BY
+                    quantity,
+                    unit_price,
+                    gross_sales,
+                    net_sales,
+                    profit
             ) AS line_item_seq,
-            quantity,
-            unit_price,
-            discount_percentage,
-            discount_amount,
-            gross_sales,
-            tax_amount,
-            shipping_cost,
-            net_sales,
-            product_cost,
-            profit,
+            CAST(COALESCE(quantity, 0) AS SIGNED) AS quantity,
+            ROUND(COALESCE(unit_price, 0), 2) AS unit_price,
+            ROUND(COALESCE(discount_percentage, 0), 6) AS discount_percentage,
+            ROUND(COALESCE(discount_amount, 0), 2) AS discount_amount,
+            ROUND(COALESCE(gross_sales, 0), 2) AS gross_sales,
+            ROUND(COALESCE(tax_amount, 0), 2) AS tax_amount,
+            ROUND(COALESCE(shipping_cost, 0), 2) AS shipping_cost,
+            ROUND(COALESCE(net_sales, 0), 2) AS net_sales,
+            ROUND(COALESCE(product_cost, 0), 2) AS product_cost,
+            ROUND(COALESCE(profit, 0), 2) AS profit
+        FROM bronze_order_items
+        WHERE order_id IS NOT NULL
+          AND TRIM(order_id) <> ''
+          AND product_id IS NOT NULL
+          AND TRIM(product_id) <> ''
+    ),
+    classified_sales AS (
+        SELECT
+            *,
             CASE
                 WHEN ROUND(net_sales - product_cost - shipping_cost - tax_amount, 2) <> ROUND(profit, 2)
                  AND ROUND(net_sales - product_cost - shipping_cost, 2) <> ROUND(profit, 2)
@@ -412,7 +429,21 @@ BEGIN
                 THEN 'FORMULA_ANOMALY'
                 ELSE 'VALID'
             END AS dq_profit_status
-        FROM bronze_order_items
+        FROM cleaned_order_items
+    ),
+    final_sales AS (
+        SELECT
+            *,
+            CASE
+                WHEN profit >= 0
+                    THEN 'Non-Negative Profit'
+                WHEN dq_profit_status = 'FORMULA_ANOMALY'
+                    THEN 'Formula Mismatch / Anomaly'
+                WHEN net_sales - product_cost >= 0 AND profit < 0
+                    THEN 'Shipping/Tax Dragged Profit Negative'
+                ELSE 'Valid Margin Compression'
+            END AS dq_loss_driver
+        FROM classified_sales
     )
     SELECT
         order_id,
@@ -429,15 +460,9 @@ BEGIN
         product_cost,
         profit,
         dq_profit_status,
-        CASE
-            WHEN profit >= 0 THEN 'Non-Negative Profit'
-            WHEN dq_profit_status = 'FORMULA_ANOMALY' THEN 'Formula Mismatch / Anomaly'
-            WHEN product_cost > (unit_price * quantity) THEN 'Base Cost > Gross Sales'
-            WHEN discount_percentage > 0.50 OR discount_amount > (gross_sales * 0.50) THEN 'Heavy Discount (>50%)'
-            WHEN (net_sales - product_cost) >= 0 AND profit < 0 THEN 'Shipping/Tax Dragged Profit Negative'
-            ELSE 'Near-50% Discount / Valid Margin Compression'
-        END AS dq_loss_driver
-    FROM cleaned_order_items;
+        dq_loss_driver,
+        CURRENT_TIMESTAMP AS data_load_dt
+    FROM final_sales;
 
     SET v_end_time = NOW(6);
     SELECT CONCAT('>> Load Duration: ', TIMESTAMPDIFF(SECOND, v_start_time, v_end_time), ' seconds') AS log_msg;
@@ -453,9 +478,9 @@ END //
 DELIMITER ;
 
 -- ============================================================================
--- EKSEKUSI & VERIFIKASI HASIL LOAD
--- Keterangan : Menjalankan procedure load Silver lalu mengecek jumlah baris
---              di tiap tabel Silver setelah proses selesai.
+-- EXECUTION & LOAD VERIFICATION
+-- Description : Run the Silver load procedure and check row counts across
+--               each Silver table after completion.
 -- ============================================================================
 CALL sp_load_silver_layer();
 
