@@ -336,9 +336,37 @@ BEGIN
     TRUNCATE TABLE silver_order_items;
 
     SELECT '>> Inserting Data Into: silver_order_items' AS log_msg;
+    WITH cleaned_order_items AS (
+        SELECT
+            order_id,
+            product_id,
+            ROW_NUMBER() OVER (
+                PARTITION BY order_id, product_id
+                ORDER BY quantity, unit_price, gross_sales, net_sales, profit
+            ) AS line_item_seq,
+            quantity,
+            unit_price,
+            discount_percentage,
+            discount_amount,
+            gross_sales,
+            tax_amount,
+            shipping_cost,
+            net_sales,
+            product_cost,
+            profit,
+            CASE
+                WHEN ROUND(net_sales - product_cost - shipping_cost - tax_amount, 2) <> ROUND(profit, 2)
+                 AND ROUND(net_sales - product_cost - shipping_cost, 2) <> ROUND(profit, 2)
+                 AND ROUND(net_sales - product_cost, 2) <> ROUND(profit, 2)
+                THEN 'FORMULA_ANOMALY'
+                ELSE 'VALID'
+            END AS dq_profit_status
+        FROM bronze_order_items
+    )
     INSERT INTO silver_order_items (
         order_id,
         product_id,
+        line_item_seq,
         quantity,
         unit_price,
         discount_percentage,
@@ -349,31 +377,13 @@ BEGIN
         net_sales,
         product_cost,
         profit,
-        data_load_dt
-    )
-    WITH cleaned_orders AS (
-        SELECT
-            TRIM(order_id) AS order_id,
-            TRIM(product_id) AS product_id,
-            CAST(COALESCE(quantity, 0) AS SIGNED) AS quantity,
-            ROUND(COALESCE(unit_price, 0), 2) AS unit_price,
-            ROUND(COALESCE(discount_percentage, 0), 6) AS discount_percentage,
-            ROUND(COALESCE(discount_amount, 0), 2) AS discount_amount,
-            ROUND(COALESCE(gross_sales, 0), 2) AS gross_sales,
-            ROUND(COALESCE(tax_amount, 0), 2) AS tax_amount,
-            ROUND(COALESCE(shipping_cost, 0), 2) AS shipping_cost,
-            ROUND(COALESCE(net_sales, 0), 2) AS net_sales,
-            ROUND(COALESCE(product_cost, 0), 2) AS product_cost,
-            ROUND(COALESCE(profit, 0), 2) AS profit
-        FROM bronze_order_items
-        WHERE order_id IS NOT NULL
-          AND TRIM(order_id) <> ''
-          AND product_id IS NOT NULL
-          AND TRIM(product_id) <> ''
+        dq_profit_status,
+        dq_loss_driver
     )
     SELECT
         order_id,
         product_id,
+        line_item_seq,
         quantity,
         unit_price,
         discount_percentage,
@@ -384,8 +394,16 @@ BEGIN
         net_sales,
         product_cost,
         profit,
-        CURRENT_TIMESTAMP AS data_load_dt
-    FROM cleaned_orders;
+        dq_profit_status,
+        CASE
+            WHEN profit >= 0 THEN 'Non-Negative Profit'
+            WHEN dq_profit_status = 'FORMULA_ANOMALY' THEN 'Formula Mismatch / Anomaly'
+            WHEN product_cost > (unit_price * quantity) THEN 'Base Cost > Gross Sales'
+            WHEN discount_percentage > 0.50 OR discount_amount > (gross_sales * 0.50) THEN 'Heavy Discount (>50%)'
+            WHEN (net_sales - product_cost) >= 0 AND profit < 0 THEN 'Shipping/Tax Dragged Profit Negative'
+            ELSE 'Near-50% Discount / Valid Margin Compression'
+        END AS dq_loss_driver
+    FROM cleaned_order_items;
 
     SET v_end_time = NOW(6);
     SELECT CONCAT('>> Load Duration: ', TIMESTAMPDIFF(SECOND, v_start_time, v_end_time), ' seconds') AS log_msg;
