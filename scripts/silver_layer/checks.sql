@@ -346,6 +346,7 @@ FROM bronze_product_catalog;
 -- Purpose     : Ensure order and product references are not NULL, empty, or
 --               contain leading/trailing spaces.
 -- Scope       : order_id, product_id, and status_cek for rows that are not Clean.
+-- Status      : Clean
 -- ----------------------------------------------------------------------------
 
 SELECT
@@ -371,6 +372,10 @@ WHERE order_id IS NULL
 -- Purpose     : Detect the same product appearing more than once within the
 --               same order_id.
 -- Scope       : (order_id, product_id) pairs with total_rows greater than 1.
+-- Status      : Duplicate (order_id, product_id) pairs were detected; however, further
+--               inspection confirmed no exact duplicates exist—all occurrences contain
+--               different values (valid split line items). Thus, the data is free from
+--               pure duplication, though aggregation or a line-item key is required for Silver.
 -- ----------------------------------------------------------------------------
 
 SELECT
@@ -382,6 +387,42 @@ GROUP BY order_id, product_id
 HAVING COUNT(*) > 1
 ORDER BY total_rows DESC, order_id, product_id;
 
+SELECT
+    order_id,
+    product_id,
+    COUNT(*) AS total_rows,
+    COUNT(DISTINCT
+        quantity,
+        unit_price,
+        discount_percentage,
+        discount_amount,
+        gross_sales,
+        tax_amount,
+        shipping_cost,
+        net_sales,
+        product_cost,
+        profit
+    ) AS distinct_metric_combinations,
+    CASE
+        WHEN COUNT(DISTINCT
+            quantity,
+            unit_price,
+            discount_percentage,
+            discount_amount,
+            gross_sales,
+            tax_amount,
+            shipping_cost,
+            net_sales,
+            product_cost,
+            profit
+        ) = 1 THEN 'Identical Duplicate'
+        ELSE 'Different Values'
+    END AS duplicate_type
+FROM bronze_order_items
+GROUP BY order_id, product_id
+HAVING COUNT(*) > 1
+ORDER BY duplicate_type, order_id, product_id;
+
 -- ----------------------------------------------------------------------------
 -- III. CHECK NUMERIC COLUMNS (quantity, price, discount, tax, shipping, sales, profit)
 -- Description : Inspect lower/upper bounds and rows with implausible values.
@@ -390,7 +431,20 @@ ORDER BY total_rows DESC, order_id, product_id;
 -- Scope       : Min/max values for quantity, unit_price, gross_sales, net_sales,
 --               and profit, plus counts for invalid_qty, invalid_unit_price,
 --               negative_gross_sales, and negative_profit_rows.
+-- Status      : Validation complete. Quantity, unit_price, and gross_sales contain no
+--               invalid values. Out of 5,426 negative-profit rows, valid business loss
+--               transactions (driven by >50% discounts, shipping/tax, and near-50%
+--               discount compression matching net_sales - product_cost - shipping_cost)
+--               are confirmed valid, while rows deviating from valid profit formulas are
+--               isolated under Formula Mismatch / Anomaly for Silver handling.
 -- ----------------------------------------------------------------------------
+
+-- Phase 1: Range profiling (MIN/MAX) and basic validity checks on core numeric
+--          columns (quantity, unit_price, gross_sales, net_sales, profit) in
+--          bronze_order_items.
+-- Status : Clean for quantity, unit_price, and gross_sales (zero invalid/negative
+--          entries). Identified 5,426 negative-profit rows for further root-cause
+--          investigation before Silver transformation.
 
 SELECT
     MIN(quantity) AS min_qty,
@@ -408,6 +462,97 @@ SELECT
     SUM(CASE WHEN gross_sales IS NULL OR gross_sales < 0 THEN 1 ELSE 0 END) AS negative_gross_sales,
     SUM(CASE WHEN profit < 0 THEN 1 ELSE 0 END) AS negative_profit_rows
 FROM bronze_order_items;
+
+-- Phase 2: Root-cause segmentation of the 5,426 negative-profit rows into business
+--          loss drivers versus potential formula anomalies in bronze_order_items.
+-- Status : Segmented into Heavy Discount (>50%) (3,323 rows; avg profit -115.60),
+--          Formula Mismatch / Anomaly (1,761 rows; avg profit -89.66), Shipping/Tax
+--          Dragged Profit Negative (332 rows; avg profit -5.43), and Other Margin
+--          Compression (10 rows; avg profit -71.66). The 1,761 formula-mismatch rows
+--          require sample inspection in Phase 3 to verify the underlying profit formula.
+SELECT
+    CASE
+        WHEN product_cost > (unit_price * quantity) THEN 'Base Cost > Gross Sales'
+        WHEN discount_percentage > 0.50 OR discount_amount > (gross_sales * 0.50) THEN 'Heavy Discount (>50%)'
+        WHEN (net_sales - product_cost) >= 0 AND profit < 0 THEN 'Shipping/Tax Dragged Profit Negative'
+        WHEN ROUND(net_sales - product_cost - shipping_cost - tax_amount, 2) <> ROUND(profit, 2)
+         AND ROUND(net_sales - product_cost, 2) <> ROUND(profit, 2) THEN 'Formula Mismatch / Anomaly'
+        ELSE 'Other Margin Compression'
+    END AS loss_driver,
+    COUNT(*) AS total_rows,
+    ROUND(MIN(profit), 2) AS worst_profit,
+    ROUND(AVG(profit), 2) AS avg_profit,
+    ROUND(AVG(discount_percentage) * 100, 2) AS avg_discount_pct
+FROM bronze_order_items
+WHERE profit < 0
+GROUP BY loss_driver
+ORDER BY total_rows DESC;
+
+
+-- Phase 3: Sample inspection (15 rows) of negative-profit rows flagged as formula
+--          mismatches against (net_sales - product_cost) and
+--          (net_sales - product_cost - shipping_cost - tax_amount) to verify the
+--          actual profit calculation pattern in bronze_order_items.
+-- Status : Sample inspection revealed that profit aligns with
+--          net_sales - product_cost - shipping_cost (excluding tax_amount). This
+--          indicates the initial formula check missed a valid third formula variant
+--          and requires updating the classification logic and priority order.
+
+SELECT
+    order_id,
+    product_id,
+    quantity,
+    unit_price,
+    discount_amount,
+    gross_sales,
+    tax_amount,
+    shipping_cost,
+    net_sales,
+    product_cost,
+    profit,
+    ROUND(net_sales - product_cost, 2) AS diff_net_minus_cost,
+    ROUND(net_sales - product_cost - shipping_cost - tax_amount, 2) AS diff_after_ship_tax
+FROM bronze_order_items
+WHERE profit < 0
+  AND ROUND(net_sales - product_cost - shipping_cost - tax_amount, 2) <> ROUND(profit, 2)
+  AND ROUND(net_sales - product_cost, 2) <> ROUND(profit, 2)
+LIMIT 15;
+
+-- Phase 4: Inspection of the 10 residual negative-profit rows under
+--          Other Margin Compression to verify whether they are valid loss-making
+--          transactions or remaining formula anomalies before Silver load.
+-- Status : All 10 rows are confirmed valid loss transactions (avg profit -71.66;
+--          worst -200.28). Profit matches net_sales - product_cost - shipping_cost
+--          (with shipping_cost = 0.00), driven by near-50% discounts (~44.5%–49.8%)
+--          pushing net_sales below product_cost. Safe to retain in Silver.
+
+SELECT
+    order_id,
+    product_id,
+    quantity,
+    unit_price,
+    discount_percentage,
+    discount_amount,
+    gross_sales,
+    tax_amount,
+    shipping_cost,
+    net_sales,
+    product_cost,
+    profit,
+    ROUND(net_sales - product_cost, 2) AS calc_net_minus_cost,
+    ROUND(net_sales - product_cost - shipping_cost, 2) AS calc_after_shipping,
+    ROUND(net_sales - product_cost - shipping_cost - tax_amount, 2) AS calc_after_ship_tax
+FROM bronze_order_items
+WHERE profit < 0
+  AND NOT (product_cost > (unit_price * quantity))
+  AND NOT (discount_percentage > 0.50 OR discount_amount > (gross_sales * 0.50))
+  AND NOT ((net_sales - product_cost) >= 0 AND profit < 0)
+  AND NOT (
+      ROUND(net_sales - product_cost - shipping_cost - tax_amount, 2) <> ROUND(profit, 2)
+      AND ROUND(net_sales - product_cost, 2) <> ROUND(profit, 2)
+  )
+ORDER BY profit ASC;
+
 -- ============================================================================
 -- TABLE 4: BRONZE_SALES_TRANSACTION (DATA QUALITY CHECK)
 -- Description : Initial data quality audit on the sales transaction table.
@@ -430,6 +575,7 @@ FROM bronze_order_items;
 --               spaces, or duplicated.
 -- Purpose     : Ensure every order_id is unique and valid.
 -- Scope       : order_id, status_check, and total_rows matching the HAVING clause.
+-- Status      : Clean
 -- ----------------------------------------------------------------------------
 
 SELECT
@@ -447,21 +593,16 @@ HAVING order_id IS NULL
     OR COUNT(order_id) > 1
     OR TRIM(order_id) = ''
     OR order_id <> TRIM(order_id);
-
--- ----------------------------------------------------------------------------
--- 2. CHECK DATE, TIME, & TRANSACTION / PAYMENT / CURRENCY STATUS
--- Description : Check completeness of date/time fields and cleanliness/value
---               variations across transaction dimension columns.
--- Purpose     : Detect NULLs, empty strings, extra spaces, or casing issues
---               in designated columns.
--- Scope       :
---   a. Count of NULL or empty order_date and order_time values.
---   b-g. Values and status_check for order_status, sales_channel, customer_id,
---        customer_name, gender, customer_segment, customer_city, customer_state,
---        customer_country, region, and customer_postal_code.
---   h-k. Distinct values and status_cek for payment_method, payment_status,
---        currency, and shipping_method.
--- ----------------------------------------------------------------------------
+-- ============================================================================
+-- 2. ORDER & WAKTU
+-- Description : Check completeness of transaction date/time fields as well as
+--               cleanliness and value variations across order and channel attributes.
+-- Purpose     : Detect NULLs, empty strings, and leading/trailing spaces across
+--               order timestamps, order status, and sales channel fields.
+-- Scope       : order_date, order_time, order_status, and sales_channel in
+--               bronze_sales_transaction.
+-- Status      : Clean
+-- ============================================================================
 
 -- a. order_date & order_time
 SELECT
@@ -493,9 +634,26 @@ SELECT
 FROM bronze_sales_transaction
 GROUP BY sales_channel, status_check;
 
--- d. customer_id
+-- ============================================================================
+-- 2. CUSTOMER & LOKASI
+-- Description : Check completeness of customer identifiers, category variations
+--               in profile/demographic attributes, and cleanliness of location and
+--               postal code fields.
+-- Purpose     : Detect NULLs, empty strings, extra spaces, transaction counts
+--               per customer/order, and postal codes shared across multiple
+--               distinct customers.
+-- Scope       : customer_id, customer_name, gender, customer_segment,
+--               customer_city, customer_state, customer_country, region, and
+--               customer_postal_code in bronze_sales_transaction.
+--Status       : Numerous duplicate postal codes detected. Further inspection on
+--               customer_postal_code '64012' revealed identical postal codes mapped
+--               to different geographic regions. For downstream customer segmentation,
+--               it is recommended to exclude postal_code and rely on actual geographic fields.
+-- ============================================================================
+
+-- a. customer_id
 SELECT
-    order_id
+    order_id,
     customer_id,
     COUNT(*) AS total_transaksi,
     CASE
@@ -509,9 +667,9 @@ GROUP BY
     order_id, customer_id, status_check
 ORDER BY total_transaksi DESC;
 
--- e. customer_name
+-- b. customer_name
 SELECT
-    order_id
+    order_id,
     customer_name,
     COUNT(*) AS total_transaksi,
     CASE
@@ -525,7 +683,7 @@ GROUP BY
     order_id, customer_name, status_check
 ORDER BY total_transaksi DESC;
 
--- f.1 Gender: check category variations, NULLs, and leading/trailing spaces
+-- c. Gender: check category variations, NULLs, and leading/trailing spaces
 SELECT DISTINCT
     gender,
     CASE
@@ -537,7 +695,7 @@ SELECT DISTINCT
 FROM bronze_sales_transaction
 ORDER BY gender;
 
--- f.2 Customer Segment: check segment variations, NULLs, and leading/trailing spaces
+-- d. Customer Segment: check segment variations, NULLs, and leading/trailing spaces
 SELECT DISTINCT
     customer_segment,
     CASE
@@ -549,7 +707,7 @@ SELECT DISTINCT
 FROM bronze_sales_transaction
 ORDER BY customer_segment;
 
--- f.3 Customer City: check city names, NULLs, and leading/trailing spaces
+-- e. Customer City: check city names, NULLs, and leading/trailing spaces
 SELECT DISTINCT
     customer_city,
     CASE
@@ -561,7 +719,7 @@ SELECT DISTINCT
 FROM bronze_sales_transaction
 ORDER BY customer_city;
 
--- f.4 Customer State: check state/province names, NULLs, and leading/trailing spaces
+-- f. Customer State: check state/province names, NULLs, and leading/trailing spaces
 SELECT DISTINCT
     customer_state,
     CASE
@@ -573,7 +731,7 @@ SELECT DISTINCT
 FROM bronze_sales_transaction
 ORDER BY customer_state;
 
--- f.5 Customer Country: check country names, NULLs, and leading/trailing spaces
+-- g. Customer Country: check country names, NULLs, and leading/trailing spaces
 SELECT DISTINCT
     customer_country,
     CASE
@@ -585,7 +743,7 @@ SELECT DISTINCT
 FROM bronze_sales_transaction
 ORDER BY customer_country;
 
--- f.6 Region: check region values, NULLs, and leading/trailing spaces
+-- h. Region: check region values, NULLs, and leading/trailing spaces
 SELECT DISTINCT
     region,
     CASE
@@ -597,7 +755,7 @@ SELECT DISTINCT
 FROM bronze_sales_transaction
 ORDER BY region;
 
--- g. Postal_Code: check NULLs, duplicates, and leading/trailing spaces
+-- i. Postal_Code: check NULLs, duplicates, and leading/trailing spaces
 SELECT
     customer_postal_code,
     COUNT(DISTINCT customer_id) AS total_customer,
@@ -613,7 +771,23 @@ GROUP BY customer_postal_code
 HAVING COUNT(DISTINCT customer_id) > 1
 ORDER BY total_customer DESC, customer_postal_code;
 
--- h. payment_method
+-- ============================================================================
+-- 3. PEMBAYARAN & PENGIRIMAN
+-- Description : Check value consistency, extra spaces, and casing across
+--               payment method/status, currency, and shipping method columns.
+-- Purpose     : Detect NULLs, empty strings, leading/trailing spaces, and
+--               non-uppercase values across payment, currency, and shipping fields.
+-- Scope       : payment_method, payment_status, currency, shipping_method, delivery_days, estimated_delivery_days
+--               in bronze_sales_transaction.
+-- Status      : Found 24,557 NULL rows in delivery_days (and estimated_delivery_days)
+--               associated with non-delivered/non-completed order statuses
+--               (such as Pending, Returned, and Cancelled), alongside valid 0.0
+--               rows reflecting same-day/fast delivery rather than missing data.
+--               Retain NULLs in delivery_days (and track non-applicable status
+--               separately in Silver) while preserving 0.0 as valid zero days.
+-- ============================================================================
+
+-- a. payment_method
 SELECT DISTINCT
     payment_method,
     CASE
@@ -625,7 +799,7 @@ SELECT DISTINCT
 FROM bronze_sales_transaction
 ORDER BY payment_method;
 
--- i. payment_status
+-- b. payment_status
 SELECT DISTINCT
     payment_status,
     CASE
@@ -637,7 +811,7 @@ SELECT DISTINCT
 FROM bronze_sales_transaction
 ORDER BY payment_status;
 
--- j. currency
+-- c. currency
 SELECT DISTINCT
     currency,
     CASE
@@ -650,7 +824,7 @@ SELECT DISTINCT
 FROM bronze_sales_transaction
 ORDER BY payment_status;
 
--- k. shipping_method
+-- d. shipping_method
 SELECT DISTINCT
     shipping_method,
     CASE
@@ -663,23 +837,7 @@ SELECT DISTINCT
 FROM bronze_sales_transaction
 ORDER BY shipping_method;
 
--- ----------------------------------------------------------------------------
--- 3. CHECK CONTEXTUAL & SUPPORTING COLUMNS
---    (delivery_days, estimated_delivery_days, return, coupon, review,
---     marketing_channel, loyalty_points, clv)
--- Description : Review row distributions and value conditions across shipping,
---               returns, coupons, reviews, marketing, and loyalty columns.
--- Purpose     : Understand expected NULL/empty patterns and detect negative
---               values or anomalies in supporting metrics.
--- Scope       :
---   - Row counts per value for delivery_days, estimated_delivery_days,
---     return_status, return_reason, coupon_code, customer_rating,
---     review_sentiment, and customer_review.
---   - Distinct values and status_cek for marketing_channel.
---   - Negative value combinations in loyalty_points_earned & redeemed, and
---     customer_lifetime_value, is_repeat_customer, & customer_order_count.
--- ----------------------------------------------------------------------------
-
+-- e. delivery_days
 SELECT
     delivery_days,
     COUNT(*) AS total_rows
@@ -688,12 +846,73 @@ GROUP BY delivery_days
 ORDER BY total_rows DESC;
 
 SELECT
+    order_status,
+    shipping_method,
+    COUNT(*) AS total_rows,
+    SUM(CASE WHEN order_date = delivery_days THEN 1 ELSE 0 END) AS same_date_cnt,
+    SUM(CASE WHEN order_date <> delivery_days THEN 1 ELSE 0 END) AS diff_date_cnt,
+    SUM(CASE WHEN delivery_days IS NULL THEN 1 ELSE 0 END) AS null_delivery_date_cnt
+FROM bronze_sales_transaction
+WHERE delivery_days = 0
+GROUP BY order_status, shipping_method
+ORDER BY total_rows DESC;
+
+SELECT
+    order_status,
+    shipping_method,
+    COUNT(*) AS total_rows,
+    SUM(CASE WHEN delivery_days IS NOT NULL THEN 1 ELSE 0 END) AS has_delivery_date_cnt,
+    SUM(CASE WHEN delivery_days IS NULL THEN 1 ELSE 0 END) AS null_delivery_date_cnt
+FROM bronze_sales_transaction
+WHERE delivery_days IS NULL
+GROUP BY order_status, shipping_method
+ORDER BY total_rows DESC;
+
+-- f.estimated_delivery_days
+SELECT
     estimated_delivery_days,
     COUNT(*) AS total_rows
 FROM bronze_sales_transaction
 GROUP BY estimated_delivery_days
 ORDER BY total_rows DESC;
 
+SELECT
+    order_status,
+    shipping_method,
+    COUNT(*) AS total_rows,
+    SUM(CASE WHEN estimated_delivery_days IS NOT NULL THEN 1 ELSE 0 END) AS has_delivery_date_cnt,
+    SUM(CASE WHEN estimated_delivery_days IS NULL THEN 1 ELSE 0 END) AS null_delivery_date_cnt
+FROM bronze_sales_transaction
+WHERE estimated_delivery_days IS NULL
+GROUP BY order_status, shipping_method
+ORDER BY total_rows DESC;
+
+-- ============================================================================
+-- 4. RETURN, REVIEW, MARKETING & LOYALTY
+-- Description : Check completeness, value ranges, and category variations across
+--               return attributes, customer reviews/ratings, marketing/promo,
+--               and loyalty status fields.
+-- Purpose     : Detect NULLs, whitespace/category inconsistencies, and out-of-range
+--               values across return, review, marketing, and loyalty columns.
+-- Scope       : Return, review/rating, marketing/promo, and loyalty columns in
+--               bronze_sales_transaction (adjust to exact column names).
+-- Status      :
+--     return_status   : 128654 NULL -> Valid (structural null from non-returned
+--                       orders: Completed 113559, Cancelled 8398, Pending 6697;
+--                       Returned totals 9462 rows).
+--     return_reason   : 128654 NULL -> Valid (structural null aligned with
+--                       non-returned order_status; 9462 rows populated on Returned).
+--     coupon_code     : 110502 NULL -> Valid (structural null for orders placed
+--                       without a coupon code).
+--     customer_rating : 24557 NULL -> Valid (non-response null; no review
+--                       submitted).
+--     review_sentiment: 24557 NULL -> Valid (non-response null; aligned with
+--                       customer_rating and customer_review).
+--     customer_review : 24557 NULL -> Valid (non-response null; aligned with
+--                       customer_rating and review_sentiment).
+-- ============================================================================
+
+-- a. return_status
 SELECT
     return_status,
     COUNT(*) AS total_rows
@@ -702,6 +921,16 @@ GROUP BY return_status
 ORDER BY total_rows DESC;
 
 SELECT
+	order_status,
+	return_status,
+    COUNT(*) AS total_rows
+FROM bronze_sales_transaction
+WHERE return_status IS NULL
+GROUP BY order_status 
+ORDER BY total_rows DESC;
+
+-- b. return_reason
+SELECT
     return_reason,
     COUNT(*) AS total_rows
 FROM bronze_sales_transaction
@@ -709,12 +938,23 @@ GROUP BY return_reason
 ORDER BY total_rows DESC;
 
 SELECT
+	order_status,
+	return_status,
+    COUNT(*) AS total_rows
+FROM bronze_sales_transaction
+WHERE return_status IS NULL
+GROUP BY order_status 
+ORDER BY total_rows DESC;
+
+-- c. coupon_code
+SELECT
     coupon_code,
     COUNT(*) AS total_rows
 FROM bronze_sales_transaction
 GROUP BY coupon_code
 ORDER BY total_rows DESC;
 
+-- d.customer_rating
 SELECT
     DISTINCT customer_rating,
     COUNT(*) AS total_rows
@@ -722,6 +962,7 @@ FROM bronze_sales_transaction
 GROUP BY customer_rating
 ORDER BY total_rows DESC;
 
+-- e.review_sentiment
 SELECT
     DISTINCT review_sentiment,
     COUNT(*) AS total_rows
@@ -729,6 +970,7 @@ FROM bronze_sales_transaction
 GROUP BY review_sentiment
 ORDER BY total_rows DESC;
 
+-- f. customer_review
 SELECT
     DISTINCT customer_review,
     COUNT(*) AS total_rows
@@ -736,6 +978,7 @@ FROM bronze_sales_transaction
 GROUP BY customer_review
 ORDER BY total_rows DESC;
 
+-- g. marketing Channel
 SELECT DISTINCT
     marketing_channel,
     CASE
@@ -747,6 +990,7 @@ SELECT DISTINCT
 FROM bronze_sales_transaction
 ORDER BY marketing_channel;
 
+-- h. loyality_points_earned
 SELECT
     DISTINCT loyalty_points_earned,
     loyalty_points_redeemed,
@@ -756,6 +1000,7 @@ WHERE loyalty_points_earned < 0 AND loyalty_points_redeemed < 0
 GROUP BY loyalty_points_earned, loyalty_points_redeemed
 ORDER BY total_rows DESC;
 
+-- i. customer_lifetime_value
 SELECT
     customer_lifetime_value,
     is_repeat_customer,
@@ -777,6 +1022,12 @@ ORDER BY total_rows DESC;
 --               negative_profit_rows.
 -- ----------------------------------------------------------------------------
 
+-- Phase 1: Range profiling (MIN/MAX) and basic validity checks on core numeric
+--          columns (quantity, gross_sales, net_sales, profit) in
+--          bronze_sales_transaction.
+-- Status : Clean for quantity and gross_sales (zero invalid/negative
+--          entries). Identified 1,296 negative-profit rows for further root-cause
+--          investigation before Silver transformation.
 SELECT
     MIN(quantity) AS min_qty,
     MAX(quantity) AS max_qty,
@@ -789,5 +1040,98 @@ SELECT
     MIN(profit_margin_percentage) AS min_margin_pct,
     MAX(profit_margin_percentage) AS max_margin_pct,
     SUM(CASE WHEN quantity IS NULL OR quantity <= 0 THEN 1 ELSE 0 END) AS invalid_qty,
+        SUM(CASE WHEN gross_sales IS NULL OR gross_sales < 0 THEN 1 ELSE 0 END) AS negative_gross_sales,
     SUM(CASE WHEN profit < 0 THEN 1 ELSE 0 END) AS negative_profit_rows
 FROM bronze_sales_transaction;
+
+
+-- Phase 2: Root-cause segmentation of the 1,296 negative-profit rows into business
+--          loss drivers versus potential formula anomalies in bronze_sales_transaction.
+-- Status : Segmented into Heavy Discount (>50%) (776 rows; avg profit -185.32),
+--          Formula Mismatch / Anomaly (426 rows; avg profit -131.52), Shipping/Tax
+--          Dragged Profit Negative (93 rows; avg profit -13.36), and Other Margin
+--          Compression (1 rows; avg profit -149.49). The 426 formula-mismatch rows
+--          require sample inspection in Phase 3 to verify the underlying profit formula.
+SELECT
+    CASE
+        WHEN product_cost > (unit_price * quantity) THEN 'Base Cost > Gross Sales'
+        WHEN discount_percentage > 0.50 OR discount_amount > (gross_sales * 0.50) THEN 'Heavy Discount (>50%)'
+        WHEN (net_sales - product_cost) >= 0 AND profit < 0 THEN 'Shipping/Tax Dragged Profit Negative'
+        WHEN ROUND(net_sales - product_cost - shipping_cost - tax_amount, 2) <> ROUND(profit, 2)
+         AND ROUND(net_sales - product_cost, 2) <> ROUND(profit, 2) THEN 'Formula Mismatch / Anomaly'
+        ELSE 'Other Margin Compression'
+    END AS loss_driver,
+    COUNT(*) AS total_rows,
+    ROUND(MIN(profit), 2) AS worst_profit,
+    ROUND(AVG(profit), 2) AS avg_profit,
+    ROUND(AVG(discount_percentage) * 100, 2) AS avg_discount_pct
+FROM bronze_order_items
+WHERE profit < 0
+GROUP BY loss_driver
+ORDER BY total_rows DESC;
+
+
+-- Phase 3: Sample inspection (15 rows) of negative-profit rows flagged as formula
+--          mismatches against (net_sales - product_cost) and
+--          (net_sales - product_cost - shipping_cost - tax_amount) to verify the
+--          actual profit calculation pattern in bronze_order_items.
+-- Status : Sample inspection revealed that profit aligns with
+--          net_sales - product_cost - shipping_cost (excluding tax_amount). This
+--          indicates the initial formula check missed a valid third formula variant
+--          and requires updating the classification logic and priority order.
+
+SELECT
+    order_id,
+    product_id,
+    quantity,
+    unit_price,
+    discount_amount,
+    gross_sales,
+    tax_amount,
+    shipping_cost,
+    net_sales,
+    product_cost,
+    profit,
+    ROUND(net_sales - product_cost, 2) AS diff_net_minus_cost,
+    ROUND(net_sales - product_cost - shipping_cost - tax_amount, 2) AS diff_after_ship_tax
+FROM bronze_order_items
+WHERE profit < 0
+  AND ROUND(net_sales - product_cost - shipping_cost - tax_amount, 2) <> ROUND(profit, 2)
+  AND ROUND(net_sales - product_cost, 2) <> ROUND(profit, 2)
+LIMIT 15;
+
+-- Phase 4: Inspection of the 1 residual negative-profit rows under
+--          Other Margin Compression to verify whether they are valid loss-making
+--          transactions or remaining formula anomalies before Silver load.
+-- Status : All 1 rows are confirmed valid loss transactions (profit -149.49;
+--          Profit matches net_sales - product_cost - shipping_cost
+--          (with shipping_cost = 0.00), driven by discount_amount (2294.68)
+--          pushing net_sales below product_cost. Safe to retain in Silver.
+
+SELECT
+    order_id,
+    product_id,
+    quantity,
+    unit_price,
+    discount_percentage,
+    discount_amount,
+    gross_sales,
+    tax_amount,
+    shipping_cost,
+    net_sales,
+    product_cost,
+    profit,
+    ROUND(net_sales - product_cost, 2) AS calc_net_minus_cost,
+    ROUND(net_sales - product_cost - shipping_cost, 2) AS calc_after_shipping,
+    ROUND(net_sales - product_cost - shipping_cost - tax_amount, 2) AS calc_after_ship_tax
+FROM bronze_order_items
+WHERE profit < 0
+  AND NOT (product_cost > (unit_price * quantity))
+  AND NOT (discount_percentage > 0.50 OR discount_amount > (gross_sales * 0.50))
+  AND NOT ((net_sales - product_cost) >= 0 AND profit < 0)
+  AND NOT (
+      ROUND(net_sales - product_cost - shipping_cost - tax_amount, 2) <> ROUND(profit, 2)
+      AND ROUND(net_sales - product_cost, 2) <> ROUND(profit, 2)
+  )
+ORDER BY profit ASC;
+
