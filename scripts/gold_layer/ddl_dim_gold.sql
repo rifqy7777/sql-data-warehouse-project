@@ -5,6 +5,9 @@ SHOW INDEX FROM silver_sales_transaction;
 ALTER TABLE silver_customer_master
 ADD PRIMARY KEY (customer_id);
 
+ALTER TABLE silver_product_catalog
+ADD PRIMARY KEY (product_id);
+
 -- Di sales: INDEX biasa (karena customer_id berulang di tiap transaksi)
 ALTER TABLE silver_sales_transaction
 ADD INDEX idx_sales_customer_id (customer_id);
